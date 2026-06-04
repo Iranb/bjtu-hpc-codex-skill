@@ -1,0 +1,8 @@
+.DS_Store
+*.log
+*.json
+*.token
+*.cookie
+*.pem
+*.key
+__pycache__/
