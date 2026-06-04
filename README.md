@@ -1,0 +1,68 @@
+# BJTU HPC Codex Skill
+
+Sanitized Codex skills for operating a BJTU-like HPC portal workflow from local helper scripts.
+
+The skills cover:
+
+- Portal token refresh with Playwright.
+- Saved multi-account auth.
+- Captcha-only login when local credentials are stored outside Git.
+- Portal job listing, native Slurm pending-reason checks, and post-submit evidence collection.
+- Stable dataset layout and cross-account dataset reuse.
+- Safe GPU job submission patterns for single-GPU and packed Slurm jobs.
+
+## Skills
+
+- `skills/bjtu-hpc/SKILL.md`: general BJTU HPC workflow and operational guardrails.
+- `skills/bjtu-hpc-submit/SKILL.md`: tool-first submit/status/auth workflow for agents.
+
+## Sanitization
+
+This repository intentionally replaces site-specific or private values with placeholders:
+
+- `<SLURM_DIR>`: local helper-script workspace.
+- `<PROJECT_DIR>`: local project workspace.
+- `<PYTHON3>`: local Python interpreter used for helper scripts.
+- `<portal_user_main>` / `<portal_user_other>`: portal login usernames.
+- `<cluster_account_main>` / `<cluster_account_other>`: cluster OS accounts.
+- `<dataset_name>`: stable dataset directory name.
+- `<proxy_host>:<proxy_port>`: temporary portal SSH/SFTP proxy endpoint.
+
+Do not commit portal tokens, cookies, temporary SSH certificates, passwords, personal paths, or real account IDs.
+
+## Recommended Auth Flow
+
+For an expired token, run the integrated refresh command rather than only reporting the error:
+
+```bash
+cd "<SLURM_DIR>"
+"<PYTHON3>" hpc_refresh_flow.py <auth_account> --visible-only
+```
+
+If a visible Playwright login times out, or the user closes the browser but the helper still waits, first recover from the same Playwright profile headlessly:
+
+```bash
+cd "<SLURM_DIR>"
+"<PYTHON3>" hpc_accounts.py refresh <auth_account> \
+  --browser playwright --headless --fresh-page --timeout 30 --sync-legacy-token
+"<PYTHON3>" hpc_accounts.py validate <auth_account>
+```
+
+Only reopen the visible browser if profile capture and validation still fail.
+
+## Dataset Layout
+
+Use one stable dataset root per dataset and keep transfer artifacts separate:
+
+```text
+/data/home/<cluster_account>/dataset/<dataset_name>/
+/data/home/<cluster_account>/dataset/_uploads/<dataset_name>/
+/data/home/<cluster_account>/dataset/_archives/<dataset_name>/
+/data/home/<cluster_account>/dataset/_manifests/<dataset_name>_manifest.json
+```
+
+Training configs should point to the canonical dataset root, not `_uploads`, `_archives`, or a temporary extraction directory.
+
+## License
+
+MIT.
