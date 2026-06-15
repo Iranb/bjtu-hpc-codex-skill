@@ -15,11 +15,11 @@ Tool-first workflow for BJTU HPC portal work from the `slurm` helper workspace. 
 ```bash
 PY=<PYTHON3>
 SLURM_DIR="<SLURM_DIR>"
-<PROJECT>_DIR="<PROJECT_DIR>"
+PROJECT_DIR="<PROJECT_DIR>"
 ```
 
-- When working from <PROJECT>, save evidence under `$<PROJECT>_DIR/refine-logs/hpc_stdout/`. Run status commands with `cwd=$<PROJECT>_DIR` when possible so `hpc_pending_reason.py` writes snapshots there automatically.
-- Use broad keywords such as `<project_keyword>` for general queue checks. Narrow keywords like `<project_keyword>_c100`, `<project_keyword>_im100`, or `dynprior` are only for targeted follow-ups.
+- When working from <PROJECT>, save evidence under `$PROJECT_DIR/refine-logs/hpc_stdout/`. Run status commands with `cwd=$PROJECT_DIR` when possible so `hpc_pending_reason.py` writes snapshots there automatically.
+- Use broad keywords such as `<keyword>` for general queue checks. Narrow keywords like `<keyword>_c100`, `<keyword>_im100`, or `<specific_keyword>` are only for targeted follow-ups.
 
 ## Entry Points
 
@@ -32,9 +32,9 @@ SLURM_DIR="<SLURM_DIR>"
 Useful <PROJECT> status commands:
 
 ```bash
-cd "$<PROJECT>_DIR"
-"$PY" "$SLURM_DIR/hpc_jobs.py" list --keyword <project_keyword> --size 30 --paths
-"$PY" "$SLURM_DIR/hpc_jobs.py" list --keyword <project_keyword> --size 30 --paths --json > refine-logs/hpc_stdout/bjtu_jobs_YYYYMMDD_HHMM.json
+cd "$PROJECT_DIR"
+"$PY" "$SLURM_DIR/hpc_jobs.py" list --keyword <keyword> --size 30 --paths
+"$PY" "$SLURM_DIR/hpc_jobs.py" list --keyword <keyword> --size 30 --paths --json > refine-logs/hpc_stdout/bjtu_jobs_YYYYMMDD_HHMM.json
 "$PY" "$SLURM_DIR/hpc_pending_reason.py" <slurm_job_id> --no-sinfo
 ```
 
@@ -69,11 +69,11 @@ cd "$SLURM_DIR" && "$PY" hpc_refresh_flow.py main --visible-only
 3. For <PROJECT> progress checks, use the post-login status variant so the same command continues after any refresh/login and returns the requested state automatically:
 
 ```bash
-cd "$<PROJECT>_DIR"
+cd "$PROJECT_DIR"
 "$PY" "$SLURM_DIR/hpc_refresh_flow.py" main --visible-only \
-  --after-jobs-keyword <project_keyword> --after-jobs-size 30 --after-jobs-paths \
-  --after-snapshot-dir "$<PROJECT>_DIR/refine-logs/hpc_stdout" \
-  --after-pending-job <job_id> --after-pending-no-sinfo
+  --after-jobs-keyword <keyword> --after-jobs-size 30 --after-jobs-paths \
+  --after-snapshot-dir "$PROJECT_DIR/refine-logs/hpc_stdout" \
+  --after-pending-job <slurm_job_id> --after-pending-no-sinfo
 ```
 
 Interpret the integrated command by its output:
@@ -108,20 +108,23 @@ cd "$SLURM_DIR" && "$PY" hpc_accounts.py validate main
 
 ## Job Rules
 
-- Default single-process GPU shape on `cluster2`: `--gpu 1 --ntasks 1 --cpus-per-task 8 --gres-flags disable-binding`.
-- Native Slurm equivalent for one GPU: `#SBATCH --ntasks=1`, `#SBATCH --cpus-per-task=8`, `#SBATCH --gres=gpu:1`, `#SBATCH --gres-flags=disable-binding`.
+- Default single-process GPU shape on `cluster2`: try `--gpu 1 --ntasks 1 --cpus-per-task 16 --gres-flags disable-binding` first.
+- Native Slurm equivalent for one GPU: `#SBATCH --ntasks=1`, `#SBATCH --cpus-per-task=16`, `#SBATCH --gres=gpu:1`, `#SBATCH --gres-flags=disable-binding`.
+- If `16` CPUs is rejected by `sbatch --test-only` or scheduler constraints, fall back to `12`, then `8`. Treat `8` CPUs per GPU-training task as the minimum; do not launch evidence-producing training below that.
 - Request more GPUs only when the code actually uses them.
 - Avoid `--gpu 1 --ntasks 8` without `--gres-flags disable-binding`; it has produced `BadConstraints`.
 - After every submit, verify the portal job row. If the job is `PENDING`, report native Slurm `Reason`, not just portal state.
 - If CPU/GRES shape matters, verify native `NumCPUs`, `NumTasks`, `CPUs/Task`, and GPU TRES with `scontrol`; portal request fields are not enough.
+- If a portal PyTorch-GPU submit requested a multi-CPU shape such as `--cpus-per-task 16` but native `scontrol` reports `NumCPUs=1` or `CPUs/Task=1`, treat the launch as CPU-degraded rather than resource-verified. Keep it only when the user explicitly accepts the risk or the run has already entered useful training; otherwise use the uploaded native `sbatch` path for CPU-sensitive training.
 - Do not cancel unrelated jobs. For `QOSMaxJobsPerUserLimit`, inspect existing jobs before canceling anything.
 - Always run `sbatch --test-only` for a new native script or a new resource shape before real submission.
 
 Known-good shapes on `cluster2`:
 
 ```text
-1 GPU single process: --ntasks=1 --cpus-per-task=8 --gres=gpu:1 --gres-flags=disable-binding
-2 GPU packed job:     --ntasks=1 --cpus-per-task=8 --gres=gpu:2 --gres-flags=disable-binding
+1 GPU single process: --ntasks=1 --cpus-per-task=16 --gres=gpu:1 --gres-flags=disable-binding
+1 GPU minimum fallback: --ntasks=1 --cpus-per-task=8 --gres=gpu:1 --gres-flags=disable-binding
+2 GPU packed job: --ntasks=2 --cpus-per-task=16 --gres=gpu:2 --gres-flags=disable-binding
 ```
 
 ## Native Slurm Packed Jobs
@@ -130,14 +133,14 @@ Use packed jobs only when one Slurm allocation intentionally launches multiple c
 
 Checklist:
 
-1. Request one batch allocation with the required GPU count, for example `--gres=gpu:2`, `--ntasks=1`, `--cpus-per-task=8`, and `--gres-flags=disable-binding`.
+1. Request one batch allocation with the required GPU count and start at 16 CPUs per child experiment, for example `--gres=gpu:2`, `--ntasks=2`, `--cpus-per-task=16`, and `--gres-flags=disable-binding`. If that is rejected, retry with `--cpus-per-task=12`, then `8`; do not go below `8` CPUs per child.
 2. In the batch script, read the allocation-provided `CUDA_VISIBLE_DEVICES` and split it into child lanes. Do not hardcode physical `0/1`; prior tests showed this can escape the allocated GPU ids.
 3. For each child, set `CUDA_VISIBLE_DEVICES` to exactly one allocated id, run a lightweight `nvidia-smi` and `torch.cuda.device_count()` sanity check, then launch the experiment.
 4. Save a batch stdout plus one child log per lane under `/data/home/<cluster_account_main>/jobs/<job_name>_<job_id>_pair/`.
 5. After submission, run native checks:
 
 ```bash
-cd "$<PROJECT>_DIR"
+cd "$PROJECT_DIR"
 "$PY" "$SLURM_DIR/hpc_pending_reason.py" <job_id> --no-sinfo
 ```
 
@@ -156,15 +159,15 @@ Do not submit additional packed jobs just because slots appear idle; first check
 
 For <PROJECT> experiment evidence:
 
-- Portal snapshots: `$<PROJECT>_DIR/refine-logs/hpc_stdout/bjtu_jobs_YYYYMMDD_HHMM*.json`
-- Native Slurm snapshots: `$<PROJECT>_DIR/refine-logs/hpc_stdout/bjtu_pending_reason_YYYYMMDD_HHMMSS*.json`
-- Downloaded launch logs: `$<PROJECT>_DIR/refine-logs/hpc_stdout/bjtu_<jobid>_<shortname>_launch_YYYYMMDD.log`
+- Portal snapshots: `$PROJECT_DIR/refine-logs/hpc_stdout/bjtu_jobs_YYYYMMDD_HHMM*.json`
+- Native Slurm snapshots: `$PROJECT_DIR/refine-logs/hpc_stdout/bjtu_pending_reason_YYYYMMDD_HHMMSS*.json`
+- Downloaded launch logs: `$PROJECT_DIR/refine-logs/hpc_stdout/bjtu_<jobid>_<shortname>_launch_YYYYMMDD.log`
 - After a material launch/status change, update `AGENTS.md`, `refine-logs/EXPERIMENT_TRACKER.md`, `EXPERIMENT_SERVER_PATHS.md`, and `NARRATIVE_REPORT.md`.
 
 Download pattern:
 
 ```bash
-"$PY" "$SLURM_DIR/hpc_download.py" "/data/home/<cluster_account_main>/path/to/remote.log" -o "$<PROJECT>_DIR/refine-logs/hpc_stdout/bjtu_<jobid>_<shortname>_launch_YYYYMMDD.log" --no-progress
+"$PY" "$SLURM_DIR/hpc_download.py" "/data/home/<cluster_account_main>/path/to/remote.log" -o "$PROJECT_DIR/refine-logs/hpc_stdout/bjtu_<jobid>_<shortname>_launch_YYYYMMDD.log" --no-progress
 ```
 
 ## Dataset Upload
@@ -184,9 +187,9 @@ cross-account symlink:  /data/home/<other_account>/dataset/<dataset_name> -> can
 - Before using a newly uploaded dataset in training, validate counts and write a manifest under `_manifests`. Training scripts should point to the canonical root, not `_uploads`, `_archives`, or a temporary extraction directory.
 - Current archive task: `dataset-archive`; source-side screen: `bjtu-resume-archive`.
 - Preferred command: `cd "$SLURM_DIR" && "$PY" hpc_transfer_app.py run dataset-archive --method parallel-chunk --parallel 4 --chunk-mib 8 --buffer-mib 4`.
-- Never delete or reset `/data/home/<cluster_account_main>/dataset/data/_archives/<dataset_archive>.tar.gz.part` unless explicitly asked.
+- Never delete or reset `/data/home/<cluster_account_main>/dataset/data/_archives/<archive_name>.tar.gz.part` unless explicitly asked.
 - Never run two upload workers writing the same archive `.part`; stop the old source-side `screen` first.
-- When `<source_server_alias>` SSH is slow or hangs, use cluster-side file size/progress as truth.
+- When `<source_host>` SSH is slow or hangs, use cluster-side file size/progress as truth.
 
 ## Post-Submit Evidence Checklist
 

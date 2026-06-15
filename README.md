@@ -7,6 +7,7 @@ The skills cover:
 - Portal token refresh with Playwright.
 - Saved multi-account auth.
 - Captcha-only login when local credentials are stored outside Git.
+- Token Guardian background validation and headless refresh after an initial visible CAS login.
 - Portal job listing, native Slurm pending-reason checks, and post-submit evidence collection.
 - Stable dataset layout and cross-account dataset reuse.
 - Safe GPU job submission patterns for single-GPU and packed Slurm jobs.
@@ -28,7 +29,7 @@ This repository intentionally replaces site-specific or private values with plac
 - `<dataset_name>`: stable dataset directory name.
 - `<proxy_host>:<proxy_port>`: temporary portal SSH/SFTP proxy endpoint.
 
-Do not commit portal tokens, cookies, temporary SSH certificates, passwords, personal paths, or real account IDs.
+Do not commit portal tokens, cookies, temporary SSH certificates, passwords, personal paths, browser profiles, or real account IDs.
 
 ## Recommended Auth Flow
 
@@ -49,6 +50,18 @@ cd "<SLURM_DIR>"
 ```
 
 Only reopen the visible browser if profile capture and validation still fail.
+
+## Token Guardian
+
+After one visible CAS login has populated the account Playwright profile, the dashboard Token Guardian can keep saved account tokens warm:
+
+```bash
+cd "<SLURM_DIR>"
+"<PYTHON3>" hpc_dashboard_service.py install --guardian-accounts all
+"<PYTHON3>" hpc_dashboard_service.py status
+```
+
+The guardian should validate saved accounts on a schedule, refresh headlessly with `--clear-existing-token` when a token becomes stale or invalid, and mark an account as needing visible login when CAS/OAuth can no longer complete without a captcha. It must never print token, password, cookie, browser-storage, or temporary certificate values.
 
 ## Dataset Layout
 
