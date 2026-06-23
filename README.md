@@ -9,6 +9,7 @@ The skills cover:
 - Captcha-only login when local credentials are stored outside Git.
 - Token Guardian background validation and headless refresh after an initial visible CAS login.
 - Fast native queue summaries across saved accounts, portal job listing, native Slurm pending-reason checks, and post-submit evidence collection.
+- Optional macOS menu bar monitor and compact desktop widget for queue and GPU-node status.
 - Stable dataset layout and cross-account dataset reuse.
 - Safe GPU job submission patterns for single-GPU and packed Slurm jobs, including emergency 4-CPU packed fallback and 2GPU-to-1GPU compatibility fallback.
 
@@ -16,6 +17,7 @@ The skills cover:
 
 - `skills/bjtu-hpc/SKILL.md`: general BJTU HPC workflow and operational guardrails.
 - `skills/bjtu-hpc-submit/SKILL.md`: tool-first submit/status/auth workflow for agents.
+- `skills/bjtu-hpc-submit/mac_hpc_monitor/`: sanitized optional macOS monitor/widget scripts.
 
 ## Sanitization
 

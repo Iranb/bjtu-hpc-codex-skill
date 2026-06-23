@@ -6,3 +6,9 @@
 *.pem
 *.key
 __pycache__/
+*.pyc
+*.app/
+*.app
+bjtu_hpc_widget_preview.png
+BJTUHPCWidget/
+BJTUHPCMonitor/

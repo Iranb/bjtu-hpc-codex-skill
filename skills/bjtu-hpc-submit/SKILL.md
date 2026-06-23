@@ -33,6 +33,7 @@ cd "$SLURM_DIR"
 
 - Start with `hpc_doctor.py --json`; it checks dependencies, account state, browser profile, and token validity without printing secrets.
 - For a local GUI, run `hpc_transfer_web.py` from the helper workspace and open the reported localhost URL.
+- For passive macOS monitoring, use the optional `mac_hpc_monitor/` scripts. The desktop widget and menu bar monitor should only read queue/resource state through `hpc_queue_summary.py --json`; they must not submit jobs or expose tokens.
 - Upload and download through helper wrappers such as `hpc_upload.py` and `hpc_download.py`; include `--auth-account <name>` when scripts support it.
 - Use portal-app submit wrappers only for resource-shape-compatible jobs or lightweight probes. Prefer verified wrappers over raw submit scripts when a portal app is used.
 - For CPU/GRES-sensitive jobs, use uploaded native `sbatch` scripts through the portal SSH path instead of portal-generated PyTorch app scripts, then verify native Slurm allocation.
@@ -57,6 +58,13 @@ cd "$PROJECT_DIR"
 - Conservative guardian defaults are a 300 second validation interval and a 1800 second headless-refresh threshold. Shorter intervals should be treated as diagnostic probes, not normal background policy.
 - To keep the dashboard and guardian alive outside a terminal, prefer a per-user LaunchAgent or equivalent user service. Run it as the same OS user that owns the Playwright profiles and `~/.bjtu_hpc_*` stores.
 - Service status commands must redact environment variables, tokens, cookies, passwords, certificates, and long token-like strings before printing raw service manager output.
+
+## macOS Monitor And Desktop Widget
+
+- The optional `mac_hpc_monitor/` directory contains a menu bar monitor plus a compact floating desktop widget. Treat them as read-only status surfaces.
+- Require users to set `HPC_MONITOR_SLURM_DIR=/path/to/bjtu-hpc-helper` when the monitor is installed from outside the helper workspace.
+- The monitor may display account aliases, job states, pending reasons, running GPU/CPU totals, and GPU-node allocation summaries. It must not display portal tokens, passwords, cookies, browser storage, temporary certificates, or raw service environments.
+- Use adaptive idempotent refresh scheduling: compare a stable state signature after each refresh, excluding timestamps. If jobs and cluster GPU/CPU resources are unchanged, grow the next interval linearly up to `HPC_MONITOR_MAX_INTERVAL`; if any job state, pending reason, node GPU/CPU allocation/free count, reservation exclusion, query error, or account error changes, reset to `HPC_MONITOR_INTERVAL`.
 
 ## Auth
 
