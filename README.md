@@ -11,7 +11,7 @@ The skills cover:
 - Fast native queue summaries across saved accounts, portal job listing, native Slurm pending-reason checks, and post-submit evidence collection.
 - Optional macOS menu bar monitor and compact desktop widget for queue and GPU-node status.
 - Stable dataset layout and cross-account dataset reuse.
-- Safe GPU job submission patterns for single-GPU and packed Slurm jobs, including emergency 4-CPU packed fallback and 2GPU-to-1GPU compatibility fallback.
+- Safe GPU job submission patterns for single-GPU and packed Slurm jobs, including monitor-snapshot resource selection, exact native Slurm preflight, emergency 4-CPU packed fallback, GPU-fill fragment jobs, and 2GPU-to-1GPU compatibility fallback.
 
 ## Skills
 

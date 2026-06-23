@@ -263,6 +263,21 @@ Use the scripts in this workspace as the canonical interface to the portal.
    ```
    Update both `#SBATCH --cpus-per-task` and child thread limits before each test. If `2GPU/16CPU` still cannot start directly because of `Resources`, reservation constraints, node CPU availability, or another resource-shape allocation failure, test emergency `2GPU/8CPU`. Do not use the emergency 4-CPU path for pure `Priority`, `QOSMaxJobsPerUserLimit`, dependency holds, node pins, or feature constraints.
 
+   For one-by-one native submissions, run `hpc_resource_planner.py` before each job and follow only `next_action`. Pass `--available-children N` or `--child-manifest children.json` before allowing 3-8GPU candidates. Use `--test-only-probe --probe-script candidate.template.sbatch --write-selected-script candidate.selected.sbatch` when you need exact-script evidence; without `--probe-script`, planner probes are resource-shape-only and the final exact sbatch still needs preflight.
+
+   For wide/GPU-fill allocations, generate a matching N-child native sbatch script first:
+   ```bash
+   hpc_native_sbatch_builder.py \
+     --job-name JOB_NAME --gpus N --cpus-per-task C \
+     --manifest children.json --output candidate.template.sbatch
+   hpc_resource_planner.py --available-children N \
+     --test-only-probe --probe-script candidate.template.sbatch \
+     --write-selected-script candidate.selected.sbatch
+   hpc_native_submit.py candidate.selected.sbatch --auth-account <account_name> \
+     --expected-gpus N --expected-ntasks N --expected-cpus-per-task C --submit
+   ```
+   The number of child commands must equal the requested GPU/task count. Do not request 3-8GPU unless the children are independent one-GPU experiments and the generated script launches one child per allocated GPU.
+
    If the packed 2GPU shape still cannot be scheduled but a native 1GPU singleton can run and the child experiments are single-GPU capable, split the pair into native singleton jobs:
    ```text
    1GPU/8CPU: --ntasks=1 --cpus-per-task=8 --gres=gpu:1
