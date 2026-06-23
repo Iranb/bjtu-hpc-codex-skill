@@ -1,6 +1,6 @@
 ---
 name: bjtu-hpc
-description: "BJTU HPC portal workflow for the local `slurm` workspace: refresh/save portal tokens, run the local Web dashboard, upload/download files, reuse existing datasets across accounts, schedule two execution-slot experiments plus two queued follow-up experiments per saved account, submit and inspect CPU/GPU jobs, get SSH/SFTP proxy info, monitor resumable dataset uploads, and collect runtime GPU/CPU details from cluster nodes. Use when working with the BJTU HPC portal, `hpc_*.py` scripts, `hpc_transfer_web.py`, or SLURM jobs on the cluster."
+description: "BJTU HPC portal workflow for the local `slurm` workspace: refresh/save portal tokens, run the local Web dashboard, upload/download files, reuse existing datasets across accounts, preflight native sbatch runability, schedule packed GPU jobs to fill each saved account to its run-slot plus queued-backlog capacity, adapt packed 2GPU jobs through CPU fallback down to emergency 4 CPUs per child, split packed 2GPU jobs into native 1GPU compatibility jobs when 2GPU cannot schedule but 1GPU can run, inspect queues across accounts, get SSH/SFTP proxy info, monitor resumable dataset uploads, and collect runtime GPU/CPU details from cluster nodes. Use when working with the BJTU HPC portal, `hpc_*.py` scripts, `hpc_transfer_web.py`, or SLURM jobs on the cluster."
 ---
 
 # BJTU HPC
@@ -221,42 +221,60 @@ Use the scripts in this workspace as the canonical interface to the portal.
    ```
    It is acceptable for `torch.cuda.is_available()` to be `False` on the login node; use a GPU job-side probe when CUDA runtime availability matters.
 
-8. Schedule experiments across accounts with a two-run-slot plus two-queue-slot policy.
+8. Schedule GPU experiments with native packed Slurm jobs by default.
 
-   For experiment batches, treat each saved auth account as having two execution slots and two follow-up queue slots:
+   For evidence-producing GPU batches, the default launch unit is one native packed job running two independent single-GPU child experiments:
    ```text
-   per account: 2 run-slot experiments + 2 queued follow-up experiments
-   current accounts: main/<cluster_account_main> and other/<cluster_account_other>
-   target total: 4 run-slot experiments + 4 queued follow-up experiments
+   2GPU/32CPU: --ntasks=2 --cpus-per-task=16 --gres=gpu:2 --gres-flags=disable-binding
    ```
+   Each child must receive exactly one Slurm-allocated GPU id from `CUDA_VISIBLE_DEVICES`. Do not hardcode physical GPU ids.
 
-   A run-slot experiment is one of the first two non-terminal experiments assigned to an account and intended to run as soon as resources permit. A queued follow-up experiment is an additional submitted experiment intentionally kept as backlog so the scheduler can start it after earlier work finishes. `DONE`, `FAILED`, and `CANCELLED` jobs no longer count toward either slot type. Before launching a batch, list accounts and check current jobs for each candidate account:
+   Treat each saved auth account as having two packed run-slot jobs plus two packed queued follow-up jobs:
+   ```text
+   per account: 2 run-slot packed jobs + 2 queued packed jobs
+   per packed job: 2 independent child experiments
+   default cap: 4 packed jobs = 8 child experiments per account
+   ```
+   Count `RUNNING`, `PENDING`, dependency-held, configuring, and other non-terminal packed jobs against the cap. Do not count terminal jobs such as `DONE`, `FAILED`, `CANCELLED`, `COMPLETED`, or `TIMEOUT`.
+
+   Before launching a batch, list accounts and check native queue state:
    ```bash
    python3 hpc_accounts.py list
-   python3 hpc_jobs.py list --auth-account main --scope current --size 50 --paths
-   python3 hpc_jobs.py list --auth-account other --scope current --size 50 --paths
+   python3 hpc_queue_summary.py --details
+   python3 hpc_jobs.py list --auth-account <account_name> --scope current --size 50 --paths
    ```
+   Prefer `hpc_queue_summary.py` for current queue and running-slot questions because it queries native `squeue` across saved accounts and catches pending jobs that portal rows may omit.
 
-   Fill each account's two run slots first, then allow up to two queued follow-ups for that same account. With the current validated accounts, `main`/`<cluster_account_main>` can hold two run-slot experiments plus two queued follow-ups, and `other`/`<cluster_account_other>` can hold the same. Do not submit a fifth non-terminal experiment under the same account unless the user explicitly overrides the cap.
-
-   For GPU training jobs, use native `sbatch` through the portal SSH proxy. Do not directly submit GPU training through the portal PyTorch-GPU app or any path that can produce a `NumCPUs=1`, `CPUs/Task=1`, `gres/gpu=1` allocation. On 2026-06-08, the portal PyTorch-GPU app accepted `--cpus-per-task 8` and `--gres-flags disable-binding` in the submitted payload but generated a native `13.sh` without those directives, resulting in a real Slurm allocation of `NumCPUs=1`, `CPUs/Task=1`, and `gres/gpu=1`. Treat any such allocation as wrong-shape, not as a valid GPU training run.
-
-   Native single-GPU training scripts should include:
-   ```bash
-   #SBATCH --partition=GPU
-   #SBATCH --nodes=1
-   #SBATCH --ntasks=1
-   #SBATCH --cpus-per-task=16
-   #SBATCH --gres=gpu:1
-   #SBATCH --gres-flags=disable-binding
+   Use this fill-to-cap algorithm for each selected account:
+   ```text
+   current = count non-terminal packed jobs for that auth account
+   open_slots = max(0, 4 - current)
+   experiment_pairs = floor(number of unlaunched child experiments / 2)
+   submit_now = min(open_slots, experiment_pairs)
    ```
-   For ordinary GPU training, start with `--cpus-per-task=16`. If `sbatch --test-only` or scheduler constraints reject that shape, retry with `12`, then `8`; treat `8` as the minimum CPU count for GPU training. Run `sbatch --test-only <script.sbatch>` before real submission, then `sbatch <script.sbatch>`, and verify with `scontrol show job <job_id>` that `NumCPUs`, `NumTasks`, `CPUs/Task`, and `TRES` match the intended shape. Make the job name encode the experiment and slot. If verification reports `NumCPUs=1` or `CPUs/Task=1` for a GPU training run, mark the launch failed/wrong-shape immediately; do not count it as a running experiment except while replacing or explicitly canceling it.
+   If `submit_now > 0`, submit that many native packed jobs before switching accounts. Do not stop after the first successful packed job while open slots remain, and do not submit a fifth non-terminal packed job unless the user explicitly overrides the cap.
 
-   If the cluster QOS naturally keeps the queued follow-ups pending until a slot frees, plain submission is sufficient. If strict "start only after this earlier experiment finishes" ordering is required, submit queued follow-ups as native Slurm jobs with dependencies, for example `--dependency=afterany:<job_id>` for automatic refill after completion. The portal submit wrapper may not expose dependencies; use the SSH proxy/native `sbatch` path when dependency semantics matter.
+   Before every real GPU training submission, run a native pre-submit runability gate on the exact remote sbatch script. Test packed candidates in this order:
+   ```text
+   2GPU/32CPU: --ntasks=2 --cpus-per-task=16 --gres=gpu:2
+   2GPU/24CPU: --ntasks=2 --cpus-per-task=12 --gres=gpu:2
+   2GPU/16CPU: --ntasks=2 --cpus-per-task=8  --gres=gpu:2
+   2GPU/8CPU:  --ntasks=2 --cpus-per-task=4  --gres=gpu:2  (emergency only)
+   ```
+   Update both `#SBATCH --cpus-per-task` and child thread limits before each test. If `2GPU/16CPU` still cannot start directly because of `Resources`, reservation constraints, node CPU availability, or another resource-shape allocation failure, test emergency `2GPU/8CPU`. Do not use the emergency 4-CPU path for pure `Priority`, `QOSMaxJobsPerUserLimit`, dependency holds, node pins, or feature constraints.
 
-   Keep each account's launch script, code path, output path, and environment under that same cluster OS account's home. Shared datasets may use ACLs or target-home symlinks, but the Python path for `other` jobs should be `/data/home/<cluster_account_other>/envs/...`, not `/data/home/<cluster_account_main>/envs/...`.
+   If the packed 2GPU shape still cannot be scheduled but a native 1GPU singleton can run and the child experiments are single-GPU capable, split the pair into native singleton jobs:
+   ```text
+   1GPU/8CPU: --ntasks=1 --cpus-per-task=8 --gres=gpu:1
+   1GPU/4CPU: --ntasks=1 --cpus-per-task=4 --gres=gpu:1  (emergency only)
+   ```
+   Use this 2GPU-to-1GPU fallback only when native evidence shows the packed 2GPU shape cannot be scheduled and 1GPU can run. Do not use it for pure `Priority`, `QOSMaxJobsPerUserLimit`, dependency holds, CPU-only pressure where emergency `2GPU/8CPU` can run, or true multi-GPU/DDP experiments that require two GPUs in one process. Count each singleton as one non-terminal launch unit.
 
-   If the native Slurm reason is `QOSMaxJobsPerUserLimit` while the account should still run two single-GPU experiments, use one native packed job with `--gres=gpu:2`, `--gres-flags=disable-binding`, and two child launches as the fallback for the run slots. Allocate `16` CPU cores per child experiment first, for example `--ntasks=2 --cpus-per-task=16`; if that shape is rejected, reduce to `12` then `8` per child, never below `8`. If queue-slot submissions are rejected by `QOSMaxSubmitJobPerUserLimit` or a similar submit cap, keep those experiments in the local launch plan and submit them when a run slot clears; do not repeatedly retry rejected queue submissions. In packed jobs, parse the batch-level `CUDA_VISIBLE_DEVICES` and pass the allocated physical GPU ids to child processes; never hardcode child GPUs as `0` and `1` unless Slurm allocated exactly those ids. Pack only two experiments per account and prefer similar expected runtimes.
+   Run `bash -n`, `sbatch --test-only`, real `sbatch`, and `scontrol show job <job_id>` verification for every submitted shape. Verify `NumCPUs`, `NumTasks`, `CPUs/Task`, and GPU TRES. If verification reports `NumCPUs=1` or `CPUs/Task=1` for a GPU training run, mark it wrong-shape immediately.
+
+   If the cluster QOS naturally keeps queued follow-ups pending until a slot frees, plain submission is sufficient. If strict refill ordering is required, submit queued follow-ups as native Slurm jobs with dependencies such as `--dependency=afterany:<job_id>`.
+
+   Keep each account's launch script, code path, output path, and runtime environment under that same cluster OS account's home. Shared datasets may use ACLs or target-home symlinks, but Python and conda paths must remain account-local.
 
 9. Submit jobs through the portal API only for CPU jobs, lightweight probes, uploads, downloads, or other resource-shape-noncritical tasks. Do not use portal API submission for GPU training. GPU training must use the native `sbatch` path above:
    ```bash
@@ -268,11 +286,13 @@ Use the scripts in this workspace as the canonical interface to the portal.
 
 10. Inspect jobs:
    ```bash
+   python3 hpc_queue_summary.py --details
+   python3 hpc_queue_summary.py --accounts <account_a>,<account_b> --json
    python3 hpc_jobs.py list --auth-account main
    python3 hpc_jobs.py wait <job_name> --auth-account main
    python3 hpc_jobs.py cancel <job_name> --auth-account main
    ```
-   Portal job rows include `ngpus`; display it when presenting job tables or dashboards.
+   For current queue, account queue, running slot, or pending-reason requests, run `hpc_queue_summary.py --details` first and summarize `RUN`, `PD`, `OTHER`, `TOTAL`, `run_open`, `cap_open`, and pending reasons per account. Portal job rows include `ngpus`; display it when presenting job tables or dashboards, but do not treat portal rows as the source of truth for native queue occupancy.
 
 11. Probe runtime environment from inside the cluster:
    ```bash
@@ -305,13 +325,13 @@ Use the scripts in this workspace as the canonical interface to the portal.
 
 - Use the token file `~/.bjtu_hpc_token`; never hardcode tokens or certificate values.
 - For multi-account work, treat `~/.bjtu_hpc_accounts.json` as the auth source of truth and `~/.bjtu_hpc_token` only as a legacy compatibility cache. Prefer `--auth-account NAME` on common commands.
-- For GPU training submissions, force `--gres-flags disable-binding` and start with `--ntasks 1 --cpus-per-task 16` for ordinary single-GPU jobs. If `16` CPUs is rejected by `sbatch --test-only` or scheduler constraints, try `12`, then `8`; do not go below `8` CPUs per training task. Use native `sbatch` for all GPU training submissions whose results may become experiment evidence. Do not rely on the portal PyTorch-GPU app to honor `--cpus-per-task` or `--gres-flags`; it has been observed to silently generate a Slurm script with only `1` CPU despite a multi-CPU portal payload. A direct portal-app `1CPU/1GPU` training allocation is forbidden for evidence-producing runs.
+- For GPU training submissions, use native `sbatch` for all evidence-producing runs and force `--gres-flags disable-binding`. Default packed jobs should test `2GPU/32CPU`, then `2GPU/24CPU`, then `2GPU/16CPU`; if `2GPU/16CPU` is still blocked by `Resources`, reservation constraints, node CPU availability, or another resource-shape allocation failure, test emergency `2GPU/8CPU` with 4 CPUs per child. If packed 2GPU still cannot schedule but 1GPU singleton preflight passes, split single-GPU-capable children into `1GPU/8CPU` singleton jobs with `1GPU/4CPU` as emergency fallback. Do not use 4-CPU or 1GPU fallback for pure `Priority`, `QOSMaxJobsPerUserLimit`, dependency holds, or true multi-GPU/DDP jobs. Do not rely on the portal PyTorch-GPU app to honor `--cpus-per-task` or `--gres-flags`; it has been observed to silently generate a Slurm script with only `1` CPU despite a multi-CPU portal payload. A direct portal-app `1CPU/1GPU` training allocation is forbidden for evidence-producing runs.
 - If a GPU training job is discovered with `NumCPUs=1`, `CPUs/Task=1`, and `gres/gpu=1`, classify it as wrong-shape immediately. Sync lightweight logs, record the failure/replacement lineage, and replace it using native `sbatch` with verified CPU/GRES allocation. Cancel the wrong-shape job only when it is the same experiment/run being replaced or the user explicitly authorizes cancellation; never cancel unrelated jobs.
 - Every GPU submit path that claims CPU/GRES correctness must run native verification using the real Slurm job id. In `--wait` flows, check both the immediate `job` row and `wait.job`; do not skip allocation verification just because the immediate portal row lacked a job id. If the MCP submit-and-verify wrapper has not been patched to read `wait.job`, perform a manual `scontrol show job <job_id>` verification before reporting success.
-- For experiment batches, cap each saved auth account at two run-slot experiments plus two queued follow-up experiments. Check current jobs per account before submitting, fill the two run slots first, then add at most two queued follow-ups, and do not submit a fifth non-terminal experiment under the same account unless the user explicitly overrides the cap.
-- Current validated scheduling policy: `main`/`<cluster_account_main>` can carry two run-slot experiments plus two queued follow-ups, and `other`/`<cluster_account_other>` can carry two run-slot experiments plus two queued follow-ups, assuming resources and scheduler submit limits allow them.
+- For experiment batches, cap each saved auth account at two run-slot packed jobs plus two queued packed follow-up jobs. Check native queue state per account before submitting, fill the two run slots first, then add at most two queued follow-ups, and do not submit a fifth non-terminal packed job under the same account unless the user explicitly overrides the cap.
+- Current generic scheduling policy: each valid saved account may carry two run-slot packed jobs plus two queued packed follow-ups, assuming resources and scheduler submit limits allow them.
 - If strict refill ordering is required, queue follow-up experiments with native Slurm dependencies such as `--dependency=afterany:<job_id>`; plain portal submissions may become runnable immediately if scheduler/QOS limits allow them.
-- If a per-account two-experiment launch hits `QOSMaxJobsPerUserLimit`, use a native two-experiment packed job with `--gres=gpu:2 --gres-flags=disable-binding` and start at `16` CPU cores per child experiment; fall back through `12` to a minimum of `8` per child only if the larger shapes are rejected. Never pack more than two experiments per account without explicit user approval.
+- If a per-account two-experiment launch hits `QOSMaxJobsPerUserLimit`, use a native two-experiment packed job with `--gres=gpu:2 --gres-flags=disable-binding` and start at `16` CPU cores per child experiment; fall back through `12` to a minimum of `8` per child only if the larger shapes are rejected. If the normal minimum still cannot schedule for resource-shape reasons, emergency `4` CPUs per child is allowed for packed jobs. Never pack more than two experiments per account without explicit user approval.
 - If queued follow-up submissions hit `QOSMaxSubmitJobPerUserLimit` or a similar submit cap, record them in the local launch plan and submit later when a slot clears rather than retrying in a loop.
 - Multi-account launches must keep account-local code, outputs, and environments under the corresponding cluster OS home. Shared datasets can cross accounts by ACL, but runtime paths should not cross accounts.
 - Prefer the portal proxy from `hpc_winscp_info.py` for SSH/SFTP.

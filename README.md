@@ -8,9 +8,9 @@ The skills cover:
 - Saved multi-account auth.
 - Captcha-only login when local credentials are stored outside Git.
 - Token Guardian background validation and headless refresh after an initial visible CAS login.
-- Portal job listing, native Slurm pending-reason checks, and post-submit evidence collection.
+- Fast native queue summaries across saved accounts, portal job listing, native Slurm pending-reason checks, and post-submit evidence collection.
 - Stable dataset layout and cross-account dataset reuse.
-- Safe GPU job submission patterns for single-GPU and packed Slurm jobs.
+- Safe GPU job submission patterns for single-GPU and packed Slurm jobs, including emergency 4-CPU packed fallback and 2GPU-to-1GPU compatibility fallback.
 
 ## Skills
 

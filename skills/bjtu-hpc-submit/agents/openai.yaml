@@ -1,0 +1,4 @@
+interface:
+  display_name: "BJTU HPC Submit"
+  short_description: "Manage BJTU HPC auth, data reuse, multi-account runs, and job evidence"
+  default_prompt: "Use $bjtu-hpc-submit to refresh BJTU HPC auth, summarize native queues, manage saved portal accounts, reuse shared datasets safely, submit packed GPU jobs with CPU fallback down to emergency 4 CPUs and 2GPU-to-1GPU compatibility fallback, verify Slurm CPU/GRES allocation and pending reasons, monitor transfer progress, and collect job evidence without exposing secrets."
