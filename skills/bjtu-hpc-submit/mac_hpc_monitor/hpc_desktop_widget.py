@@ -49,6 +49,7 @@ from hpc_menubar_monitor import (
     DEFAULT_DASHBOARD_URL,
     DEFAULT_PYTHON,
     DEFAULT_SLURM_DIR,
+    account_auth_error,
     account_counts,
     account_status,
     adaptive_refresh_interval,
@@ -86,6 +87,7 @@ COLORS = {
     "green": color(0.16, 0.73, 0.47, 1.0),
     "cyan": color(0.23, 0.67, 0.86, 1.0),
     "amber": color(0.95, 0.64, 0.22, 1.0),
+    "violet": color(0.77, 0.43, 0.96, 1.0),
     "red": color(0.92, 0.28, 0.32, 1.0),
     "blue": color(0.32, 0.56, 0.93, 1.0),
     "bar_bg": color(0.95, 0.98, 1.0, 0.11),
@@ -98,6 +100,7 @@ def status_color(status: str) -> NSColor:
         "ROOM": COLORS["cyan"],
         "OPEN": COLORS["amber"],
         "IDLE": COLORS["soft"],
+        "AUTH": COLORS["violet"],
         "ERROR": COLORS["red"],
     }.get(status, COLORS["soft"])
 
@@ -108,11 +111,14 @@ def status_tone(status: str) -> str:
         "ROOM": "cyan",
         "OPEN": "amber",
         "IDLE": "soft",
+        "AUTH": "violet",
         "ERROR": "red",
     }.get(status, "soft")
 
 
 def compact_reason(account: dict[str, Any]) -> str:
+    if account_auth_error(account):
+        return "token expired"
     if account.get("error"):
         return "query failed"
     counts = account_counts(account)
@@ -381,7 +387,10 @@ class WidgetView(NSView):
         self.draw_status_dot(inner_left, y + 19, 8, dot)
         self.draw_text(shorten(name, 7), inner_left + 15, y + 14, identity_w - 15, 18, 13.0, status_tone(status), "bold")
 
-        if account.get("error"):
+        if account_auth_error(account):
+            detail = compact_reason(account)
+            tone = "violet"
+        elif account.get("error"):
             detail = compact_reason(account)
             tone = "red"
         else:
@@ -440,6 +449,33 @@ class WidgetView(NSView):
         elif self.error:
             self.draw_text("network error", 112, 448, 118, 16, 10.5, "red", "bold")
 
+    def draw_status_legend(self, compact=False):
+        width = self.bounds().size.width
+        items = (
+            [
+                ("F", COLORS["green"]),
+                ("R", COLORS["cyan"]),
+                ("O", COLORS["amber"]),
+                ("T", COLORS["violet"]),
+                ("E", COLORS["red"]),
+            ]
+            if compact
+            else [
+                ("full", COLORS["green"]),
+                ("room", COLORS["cyan"]),
+                ("open", COLORS["amber"]),
+                ("token", COLORS["violet"]),
+                ("err", COLORS["red"]),
+            ]
+        )
+        x = width - (85 if compact else 198)
+        y = 448
+        for label, fill in items:
+            self.draw_status_dot(x, y + 4, 5, fill)
+            label_w = 8 if compact else 32 if label == "token" else 18 if label == "err" else 25
+            self.draw_text(label, x + 8, y, label_w, 12, 8.2, "muted")
+            x += label_w + (9 if compact else 15)
+
     def drawRect_(self, dirty_rect):
         bounds = self.bounds()
         self.rounded_rect(bounds, 18, COLORS["bg"], COLORS["stroke"])
@@ -456,6 +492,7 @@ class WidgetView(NSView):
             accounts = sorted_accounts(self.payload.get("accounts") or [])
             for index, account in enumerate(accounts[:5]):
                 self.draw_account(account, index)
+            self.draw_status_legend(compact=bool(self.refreshing or self.error))
             if len(accounts) >= 5:
                 self.draw_footer(len(accounts))
             else:
@@ -707,8 +744,15 @@ def render_preview(payload: dict[str, Any], path: Path) -> None:
                 )
                 draw_fit_text(label, (x + 9, y, chip_w - 9, 12), small, (178, 190, 208))
 
-    status_rgb = {"FULL": (48, 186, 120), "ROOM": (58, 171, 218), "OPEN": (242, 164, 56), "IDLE": (128, 145, 166), "ERROR": (234, 72, 82)}
-    status_name_rgb = {"FULL": (48, 186, 120), "ROOM": (58, 171, 218), "OPEN": (242, 164, 56), "IDLE": (128, 145, 166), "ERROR": (234, 72, 82)}
+    status_rgb = {
+        "FULL": (48, 186, 120),
+        "ROOM": (58, 171, 218),
+        "OPEN": (242, 164, 56),
+        "IDLE": (128, 145, 166),
+        "AUTH": (196, 110, 245),
+        "ERROR": (234, 72, 82),
+    }
+    status_name_rgb = status_rgb
     for index, account in enumerate(sorted_accounts(payload.get("accounts") or [])[:5]):
         y = 184 + index * 49
         card_x = 10
@@ -741,8 +785,27 @@ def render_preview(payload: dict[str, Any], path: Path) -> None:
         draw_metric("WAIT", str(c["pending"]), metric_x + col_w * 3, y + 6, col_w, wait_fill)
         detail = compact_reason(account)
         reasons = ((account.get("summary") or {}).get("pending_reasons") or {})
-        detail_fill = (234, 72, 82) if account.get("error") else (242, 164, 56) if reasons else (128, 145, 166)
+        if account_auth_error(account):
+            detail_fill = (196, 110, 245)
+        elif account.get("error"):
+            detail_fill = (234, 72, 82)
+        elif reasons:
+            detail_fill = (242, 164, 56)
+        else:
+            detail_fill = (128, 145, 166)
         draw_fit_text(detail, (metric_x, y + 33, metric_w, 11), small, detail_fill, "center")
+    legend = [
+        ("full", (48, 186, 120), 25),
+        ("room", (58, 171, 218), 25),
+        ("open", (242, 164, 56), 25),
+        ("token", (196, 110, 245), 32),
+        ("err", (234, 72, 82), 18),
+    ]
+    legend_x = width - 198
+    for label, fill, label_w in legend:
+        draw.ellipse((legend_x, 452, legend_x + 5, 457), fill=fill)
+        draw_fit_text(label, (legend_x + 8, 448, label_w, 12), small, (178, 190, 208))
+        legend_x += label_w + 15
     if len(payload.get("accounts") or []) >= 5:
         draw_fit_text(str(len(payload.get("accounts") or [])), (20, 448, 16, 16), small, (240, 245, 250))
         draw_fit_text("accounts", (40, 448, 78, 16), small, (178, 190, 208))

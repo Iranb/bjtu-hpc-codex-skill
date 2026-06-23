@@ -66,6 +66,9 @@ Uninstall:
 ```
 
 Right-click the widget to open the dashboard or quit. Drag anywhere on the widget to move it.
+The bottom-right legend maps account-name colors: green `full`, blue `room`,
+amber `open`, purple `token` for accounts that need token refresh, and red
+`err` for non-auth query or network errors.
 
 ## Run Once
 
@@ -117,7 +120,7 @@ export HPC_WIDGET_WIDTH=320
 export HPC_WIDGET_HEIGHT=466
 ```
 
-Defaults are suitable for the local helper workspace.
+Defaults are suitable when the monitor lives inside the helper workspace.
 
 `HPC_MONITOR_INTERVAL` is the base refresh interval. The monitors compare a
 stable state signature after each refresh; if jobs and cluster GPU/CPU resources

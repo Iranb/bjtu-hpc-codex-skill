@@ -70,6 +70,28 @@ def as_int(value: Any) -> int:
         return 0
 
 
+def account_auth_error(account: dict[str, Any]) -> bool:
+    if account.get("has_token") is False:
+        return True
+    text = str(account.get("error") or "").lower()
+    if not text:
+        return False
+    markers = (
+        "11009",
+        "11011",
+        "11012",
+        "401",
+        "no saved token",
+        "missing profile token",
+        "expired",
+        "invalid token",
+        "unauthorized",
+        "need visible login",
+        "cas login",
+    )
+    return any(marker in text for marker in markers)
+
+
 def account_counts(account: dict[str, Any]) -> dict[str, int]:
     summary = account.get("summary") or {}
     running = as_int(summary.get("running"))
@@ -97,6 +119,8 @@ def account_counts(account: dict[str, Any]) -> dict[str, int]:
 
 
 def account_status(account: dict[str, Any]) -> str:
+    if account_auth_error(account):
+        return "AUTH"
     if account.get("error"):
         return "ERROR"
     counts = account_counts(account)
@@ -113,6 +137,8 @@ def account_summary_line(account: dict[str, Any]) -> str:
     name = account.get("name") or "unknown"
     counts = account_counts(account)
     status = account_status(account)
+    if status == "AUTH":
+        return f"{name:<7} {status:<5}   token refresh needed"
     if account.get("error"):
         return f"{name:<7} {status:<5}   query failed"
     other = f" O{counts['other']}" if counts["other"] else ""
@@ -126,6 +152,8 @@ def account_summary_line(account: dict[str, Any]) -> str:
 
 def account_detail_line(account: dict[str, Any]) -> str:
     counts = account_counts(account)
+    if account_auth_error(account):
+        return "auth/token refresh needed"
     if account.get("error"):
         return shorten(account.get("error"), 78)
     reasons = ((account.get("summary") or {}).get("pending_reasons") or {})

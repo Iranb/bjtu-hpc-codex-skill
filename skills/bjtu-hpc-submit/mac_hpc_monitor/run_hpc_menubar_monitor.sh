@@ -2,7 +2,7 @@
 set -euo pipefail
 
 MONITOR_DIR="$(cd "$(dirname "$0")" && pwd)"
-SLURM_DIR="$(cd "$MONITOR_DIR/.." && pwd)"
+SLURM_DIR="${HPC_MONITOR_SLURM_DIR:-$(cd "$MONITOR_DIR/.." && pwd)}"
 
 export HPC_MONITOR_PYTHON="${HPC_MONITOR_PYTHON:-python3}"
 export HPC_MONITOR_SLURM_DIR="${HPC_MONITOR_SLURM_DIR:-$SLURM_DIR}"
