@@ -66,6 +66,8 @@ Uninstall:
 ```
 
 Right-click the widget to open the dashboard or quit. Drag anywhere on the widget to move it.
+Click the pin icon in the top-right corner to toggle Always On Top; the choice is saved in
+`~/Library/Application Support/BJTUHPCWidget/config.json`.
 The bottom-right legend maps account-name colors: green `full`, blue `room`,
 amber `open`, purple `token` for accounts that need token refresh, and red
 `err` for non-auth query or network errors.
@@ -118,6 +120,7 @@ export HPC_MONITOR_ACCOUNTS=main,other
 export HPC_MONITOR_ALL_PARTITIONS=0
 export HPC_WIDGET_WIDTH=320
 export HPC_WIDGET_HEIGHT=466
+export HPC_WIDGET_ALWAYS_ON_TOP=1
 ```
 
 Defaults are suitable when the monitor lives inside the helper workspace.

@@ -12,6 +12,7 @@ export HPC_MONITOR_TIMEOUT="${HPC_MONITOR_TIMEOUT:-45}"
 export HPC_MONITOR_DASHBOARD_URL="${HPC_MONITOR_DASHBOARD_URL:-http://127.0.0.1:8765/}"
 export HPC_WIDGET_WIDTH="${HPC_WIDGET_WIDTH:-320}"
 export HPC_WIDGET_HEIGHT="${HPC_WIDGET_HEIGHT:-466}"
+export HPC_WIDGET_ALWAYS_ON_TOP="${HPC_WIDGET_ALWAYS_ON_TOP:-1}"
 
 # The widget reads saved BJTU account files through helper scripts. It should
 # not inherit unrelated API keys or ad-hoc portal tokens from the launching shell.

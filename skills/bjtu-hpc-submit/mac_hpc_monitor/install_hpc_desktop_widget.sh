@@ -55,6 +55,8 @@ cat > "$PLIST" <<PLIST
     <string>${HPC_WIDGET_WIDTH:-320}</string>
     <key>HPC_WIDGET_HEIGHT</key>
     <string>${HPC_WIDGET_HEIGHT:-466}</string>
+    <key>HPC_WIDGET_ALWAYS_ON_TOP</key>
+    <string>${HPC_WIDGET_ALWAYS_ON_TOP:-1}</string>
   </dict>
 </dict>
 </plist>

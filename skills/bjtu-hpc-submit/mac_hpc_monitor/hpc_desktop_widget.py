@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -26,6 +27,8 @@ from AppKit import (
     NSFontWeightSemibold,
     NSForegroundColorAttributeName,
     NSFloatingWindowLevel,
+    NSImage,
+    NSImageSymbolConfiguration,
     NSMakeRect,
     NSMutableParagraphStyle,
     NSMenu,
@@ -34,6 +37,9 @@ from AppKit import (
     NSLeftTextAlignment,
     NSParagraphStyleAttributeName,
     NSRightTextAlignment,
+    NSNormalWindowLevel,
+    NSRoundLineCapStyle,
+    NSRoundLineJoinStyle,
     NSScreen,
     NSView,
     NSWindow,
@@ -70,6 +76,36 @@ from hpc_menubar_monitor import (
 
 DEFAULT_WIDTH = 320
 DEFAULT_HEIGHT = 466
+CONFIG_PATH = Path.home() / "Library" / "Application Support" / "BJTUHPCWidget" / "config.json"
+
+
+def env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def load_widget_config(default_always_on_top: bool) -> dict[str, Any]:
+    config = {"always_on_top": default_always_on_top}
+    try:
+        payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return config
+    if isinstance(payload, dict) and "always_on_top" in payload:
+        config["always_on_top"] = bool(payload["always_on_top"])
+    return config
+
+
+def save_widget_config(config: dict[str, Any]) -> None:
+    try:
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG_PATH.write_text(
+            json.dumps(config, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
 
 
 def color(red: float, green: float, blue: float, alpha: float = 1.0) -> NSColor:
@@ -171,10 +207,26 @@ class WidgetView(NSView):
         self.last_refresh_started_at = None
         self.updated_at = None
         self.dashboard_url = DEFAULT_DASHBOARD_URL
+        self.always_on_top = True
+        self.pin_button_rect = (0.0, 0.0, 0.0, 0.0)
         return self
 
     def acceptsFirstMouse_(self, event):
         return True
+
+    def event_hits_top_rect(self, event, rect) -> bool:
+        local = self.convertPoint_fromView_(event.locationInWindow(), None)
+        x, y, width, height = rect
+        top_point_y = self.bounds().size.height - local.y
+        return x <= local.x <= x + width and y <= top_point_y <= y + height
+
+    def mouseDown_(self, event):
+        if self.event_hits_top_rect(event, self.pin_button_rect):
+            delegate = NSApp.delegate()
+            if delegate is not None:
+                delegate.toggleAlwaysOnTop_(self)
+            return
+        objc.super(WidgetView, self).mouseDown_(event)
 
     def mouseDragged_(self, event):
         window = self.window()
@@ -207,6 +259,10 @@ class WidgetView(NSView):
 
     def setDashboardURL_(self, url):
         self.dashboard_url = url
+
+    def setAlwaysOnTop_(self, value):
+        self.always_on_top = bool(value)
+        self.setNeedsDisplay_(True)
 
     def rounded_rect(self, rect, radius, fill, stroke=None, line_width=1.0):
         path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(rect, radius, radius)
@@ -271,6 +327,63 @@ class WidgetView(NSView):
         fill.setFill()
         path.fill()
 
+    def draw_pin_button(self, x, y, size):
+        view_height = self.bounds().size.height
+        hit_padding = 4
+        self.pin_button_rect = (x - hit_padding, y - hit_padding, size + hit_padding * 2, size + hit_padding * 2)
+        rect = NSMakeRect(x - 2, top_y(view_height, y - 2, size + 4), size + 4, size + 4)
+        bg = color(0.95, 0.98, 1.0, 0.10 if self.always_on_top else 0.04)
+        ring = color(0.23, 0.67, 0.86, 0.30) if self.always_on_top else COLORS["stroke"]
+        self.rounded_rect(rect, (size + 4) / 2, bg, ring)
+
+        stroke = COLORS["cyan"] if self.always_on_top else COLORS["muted"]
+
+        try:
+            symbol_name = "pin.fill" if self.always_on_top else "pin.slash"
+            symbol = NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol_name, None)
+            if symbol is not None:
+                base_config = NSImageSymbolConfiguration.configurationWithPointSize_weight_(
+                    size - 1,
+                    NSFontWeightSemibold,
+                )
+                color_config = NSImageSymbolConfiguration.configurationWithHierarchicalColor_(stroke)
+                symbol = symbol.imageWithSymbolConfiguration_(
+                    base_config.configurationByApplyingConfiguration_(color_config)
+                ) or symbol
+                glyph_rect = NSMakeRect(x + 1, top_y(view_height, y + 1, size - 2), size - 2, size - 2)
+                symbol.drawInRect_(glyph_rect)
+                return
+        except Exception:
+            pass
+
+        def point(px, py):
+            return (x + px, view_height - (y + py))
+
+        def pin_line(start_x, start_y, end_x, end_y, line_width):
+            path = NSBezierPath.bezierPath()
+            path.setLineWidth_(line_width)
+            path.setLineCapStyle_(NSRoundLineCapStyle)
+            path.setLineJoinStyle_(NSRoundLineJoinStyle)
+            stroke.setStroke()
+            path.moveToPoint_(point(size * start_x, size * start_y))
+            path.lineToPoint_(point(size * end_x, size * end_y))
+            path.stroke()
+
+        pin_line(0.42, 0.24, 0.73, 0.40, 2.0)
+        pin_line(0.43, 0.35, 0.34, 0.60, 1.8)
+        pin_line(0.66, 0.49, 0.54, 0.73, 1.8)
+        pin_line(0.30, 0.62, 0.55, 0.77, 2.0)
+        pin_line(0.40, 0.75, 0.24, 0.92, 1.6)
+
+        if not self.always_on_top:
+            slash = NSBezierPath.bezierPath()
+            slash.setLineWidth_(1.7)
+            slash.setLineCapStyle_(NSRoundLineCapStyle)
+            COLORS["soft"].setStroke()
+            slash.moveToPoint_(point(size * 0.22, size * 0.84))
+            slash.lineToPoint_(point(size * 0.78, size * 0.28))
+            slash.stroke()
+
     def draw_vrule(self, x, y, height):
         view_height = self.bounds().size.height
         rect = NSMakeRect(x, top_y(view_height, y, height), 1, height)
@@ -293,8 +406,9 @@ class WidgetView(NSView):
         section_w = (overview_w - section_gap * 2) / 3
         self.draw_text("BJTU HPC", 20, 14, 150, 26, 19, "text", "bold")
         stamp = payload.get("checked_at_local") or "-"
-        self.draw_text("updated", width - 148, 18, 58, 18, 10.5, "muted", align="right")
-        self.draw_text(stamp[-8:], width - 82, 18, 62, 18, 10.5, "muted", align="right")
+        self.draw_text("updated", width - 166, 18, 58, 18, 10.5, "muted", align="right")
+        self.draw_text(stamp[-8:], width - 100, 18, 58, 18, 10.5, "muted", align="right")
+        self.draw_pin_button(width - 28, 18, 16)
 
         metrics = [
             ("Running", f"{counts['running']}/{counts['run_slots']}", counts["running"], total_run, COLORS["green"]),
@@ -501,6 +615,7 @@ class WidgetView(NSView):
 
         width = bounds.size.width
         self.draw_text("BJTU HPC", 22, 20, 160, 28, 20, "text", "bold")
+        self.draw_pin_button(width - 28, 24, 16)
         if self.error:
             self.draw_pill("ERROR", width - 88, 24, 66, 22, COLORS["red"])
             self.draw_text(shorten(self.error, 52), 24, 82, width - 48, 46, 12, "muted")
@@ -530,6 +645,8 @@ class WidgetDelegate(NSObject):
         self.dashboard_url = os.getenv("HPC_MONITOR_DASHBOARD_URL", DEFAULT_DASHBOARD_URL)
         self.width = env_int("HPC_WIDGET_WIDTH", DEFAULT_WIDTH, minimum=300)
         self.height = env_int("HPC_WIDGET_HEIGHT", DEFAULT_HEIGHT, minimum=340)
+        self.config = load_widget_config(env_bool("HPC_WIDGET_ALWAYS_ON_TOP", True))
+        self.always_on_top = bool(self.config.get("always_on_top", True))
         self.window = None
         self.view = None
         self.timer = None
@@ -555,7 +672,7 @@ class WidgetDelegate(NSObject):
         self.window.setBackgroundColor_(NSColor.clearColor())
         self.window.setHasShadow_(True)
         self.window.setMovableByWindowBackground_(True)
-        self.window.setLevel_(NSFloatingWindowLevel)
+        self.apply_window_level()
         self.window.setCollectionBehavior_(
             NSWindowCollectionBehaviorCanJoinAllSpaces
             | NSWindowCollectionBehaviorStationary
@@ -563,9 +680,25 @@ class WidgetDelegate(NSObject):
         )
         self.view = WidgetView.alloc().initWithFrame_(NSMakeRect(0, 0, self.width, self.height))
         self.view.setDashboardURL_(self.dashboard_url)
+        self.view.setAlwaysOnTop_(self.always_on_top)
         self.window.setContentView_(self.view)
         self.window.makeKeyAndOrderFront_(None)
         self.refresh_(None)
+
+    def apply_window_level(self):
+        if self.window is None:
+            return
+        self.window.setLevel_(NSFloatingWindowLevel if self.always_on_top else NSNormalWindowLevel)
+        if self.always_on_top:
+            self.window.makeKeyAndOrderFront_(None)
+
+    def toggleAlwaysOnTop_(self, sender):
+        self.always_on_top = not self.always_on_top
+        self.config["always_on_top"] = self.always_on_top
+        save_widget_config(self.config)
+        self.apply_window_level()
+        if self.view:
+            self.view.setAlwaysOnTop_(self.always_on_top)
 
     def timerFired_(self, timer):
         self.timer = None
@@ -681,8 +814,52 @@ def render_preview(payload: dict[str, Any], path: Path) -> None:
     draw.rounded_rectangle((10, 12, width - 10, 102), radius=14, fill=(22, 27, 36, 230), outline=(255, 255, 255, 32))
     draw_fit_text("BJTU HPC", (20, 15, 150, 26), bold, (240, 245, 250))
     stamp = payload.get("checked_at_local") or "-"
-    draw_fit_text("updated", (width - 148, 19, 58, 18), small, (178, 190, 208), "right")
-    draw_fit_text(stamp[-8:], (width - 82, 19, 62, 18), small, (178, 190, 208), "right")
+    draw_fit_text("updated", (width - 166, 19, 58, 18), small, (178, 190, 208), "right")
+    draw_fit_text(stamp[-8:], (width - 100, 19, 58, 18), small, (178, 190, 208), "right")
+    pin_x, pin_y, pin_size = width - 28, 20, 16
+    draw.ellipse((pin_x - 2, pin_y - 2, pin_x + pin_size + 2, pin_y + pin_size + 2), fill=(255, 255, 255, 24), outline=(255, 255, 255, 30))
+    pin_color = (58, 171, 218)
+
+    icon_scale = 4
+    icon = Image.new("RGBA", (pin_size * icon_scale, pin_size * icon_scale), (0, 0, 0, 0))
+    icon_draw = ImageDraw.Draw(icon)
+
+    def pin_point(px: float, py: float) -> tuple[int, int]:
+        return int(pin_size * icon_scale * px), int(pin_size * icon_scale * py)
+
+    icon_draw.polygon(
+        [
+            pin_point(0.42, 0.23),
+            pin_point(0.77, 0.39),
+            pin_point(0.71, 0.50),
+            pin_point(0.36, 0.34),
+        ],
+        fill=pin_color,
+    )
+    icon_draw.polygon(
+        [
+            pin_point(0.42, 0.35),
+            pin_point(0.67, 0.49),
+            pin_point(0.54, 0.75),
+            pin_point(0.30, 0.61),
+        ],
+        fill=pin_color,
+    )
+    icon_draw.polygon(
+        [
+            pin_point(0.28, 0.60),
+            pin_point(0.58, 0.77),
+            pin_point(0.51, 0.89),
+            pin_point(0.21, 0.72),
+        ],
+        fill=pin_color,
+    )
+    icon_draw.polygon(
+        [pin_point(0.41, 0.78), pin_point(0.18, 0.95), pin_point(0.30, 0.68)],
+        fill=pin_color,
+    )
+    icon = icon.resize((pin_size, pin_size), Image.Resampling.LANCZOS)
+    image.alpha_composite(icon, (pin_x, pin_y))
 
     counts = overview_counts(payload)
     cards = [("Running", f"{counts['running']}/{counts['run_slots']}", (48, 186, 120)), ("Waiting", str(counts["pending"]), (242, 164, 56)), ("Jobs", f"{counts['total']}/{counts['cap']}", (58, 171, 218))]
