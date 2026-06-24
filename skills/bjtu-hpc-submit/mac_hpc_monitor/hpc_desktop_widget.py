@@ -86,14 +86,19 @@ def env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
-def load_widget_config(default_always_on_top: bool) -> dict[str, Any]:
-    config = {"always_on_top": default_always_on_top}
+def load_widget_config(default_always_on_top: bool, default_all_spaces: bool) -> dict[str, Any]:
+    config = {
+        "always_on_top": default_always_on_top,
+        "all_spaces": default_all_spaces,
+    }
     try:
         payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     except Exception:
         return config
     if isinstance(payload, dict) and "always_on_top" in payload:
         config["always_on_top"] = bool(payload["always_on_top"])
+    if isinstance(payload, dict) and "all_spaces" in payload:
+        config["all_spaces"] = bool(payload["all_spaces"])
     return config
 
 
@@ -645,8 +650,12 @@ class WidgetDelegate(NSObject):
         self.dashboard_url = os.getenv("HPC_MONITOR_DASHBOARD_URL", DEFAULT_DASHBOARD_URL)
         self.width = env_int("HPC_WIDGET_WIDTH", DEFAULT_WIDTH, minimum=300)
         self.height = env_int("HPC_WIDGET_HEIGHT", DEFAULT_HEIGHT, minimum=340)
-        self.config = load_widget_config(env_bool("HPC_WIDGET_ALWAYS_ON_TOP", True))
+        self.config = load_widget_config(
+            env_bool("HPC_WIDGET_ALWAYS_ON_TOP", True),
+            env_bool("HPC_WIDGET_ALL_SPACES", False),
+        )
         self.always_on_top = bool(self.config.get("always_on_top", True))
+        self.all_spaces = bool(self.config.get("all_spaces", False))
         self.window = None
         self.view = None
         self.timer = None
@@ -673,11 +682,7 @@ class WidgetDelegate(NSObject):
         self.window.setHasShadow_(True)
         self.window.setMovableByWindowBackground_(True)
         self.apply_window_level()
-        self.window.setCollectionBehavior_(
-            NSWindowCollectionBehaviorCanJoinAllSpaces
-            | NSWindowCollectionBehaviorStationary
-            | NSWindowCollectionBehaviorFullScreenAuxiliary
-        )
+        self.apply_window_collection_behavior()
         self.view = WidgetView.alloc().initWithFrame_(NSMakeRect(0, 0, self.width, self.height))
         self.view.setDashboardURL_(self.dashboard_url)
         self.view.setAlwaysOnTop_(self.always_on_top)
@@ -691,6 +696,14 @@ class WidgetDelegate(NSObject):
         self.window.setLevel_(NSFloatingWindowLevel if self.always_on_top else NSNormalWindowLevel)
         if self.always_on_top:
             self.window.makeKeyAndOrderFront_(None)
+
+    def apply_window_collection_behavior(self):
+        if self.window is None:
+            return
+        behavior = NSWindowCollectionBehaviorStationary | NSWindowCollectionBehaviorFullScreenAuxiliary
+        if self.all_spaces:
+            behavior |= NSWindowCollectionBehaviorCanJoinAllSpaces
+        self.window.setCollectionBehavior_(behavior)
 
     def toggleAlwaysOnTop_(self, sender):
         self.always_on_top = not self.always_on_top
