@@ -54,7 +54,7 @@ cat > "$PLIST" <<PLIST
     <key>HPC_WIDGET_WIDTH</key>
     <string>${HPC_WIDGET_WIDTH:-320}</string>
     <key>HPC_WIDGET_HEIGHT</key>
-    <string>${HPC_WIDGET_HEIGHT:-466}</string>
+    <string>${HPC_WIDGET_HEIGHT:-370}</string>
     <key>HPC_WIDGET_ALWAYS_ON_TOP</key>
     <string>${HPC_WIDGET_ALWAYS_ON_TOP:-1}</string>
     <key>HPC_WIDGET_ALL_SPACES</key>

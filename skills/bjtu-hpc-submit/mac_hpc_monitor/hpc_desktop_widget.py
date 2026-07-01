@@ -9,6 +9,8 @@ import os
 import subprocess
 import sys
 import threading
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -45,7 +47,6 @@ from AppKit import (
     NSWindow,
     NSWindowCollectionBehaviorCanJoinAllSpaces,
     NSWindowCollectionBehaviorFullScreenAuxiliary,
-    NSWindowCollectionBehaviorStationary,
     NSWindowStyleMaskBorderless,
 )
 from Foundation import NSObject, NSString, NSTimer
@@ -75,8 +76,14 @@ from hpc_menubar_monitor import (
 
 
 DEFAULT_WIDTH = 320
-DEFAULT_HEIGHT = 466
+DEFAULT_HEIGHT = 370
 CONFIG_PATH = Path.home() / "Library" / "Application Support" / "BJTUHPCWidget" / "config.json"
+ACCOUNT_START_Y = 184
+ACCOUNT_FOOTER_BOTTOM_MARGIN = 18
+ACCOUNT_VISIBLE_ROWS = 3
+ACCOUNT_DEFAULT_CARD_H = 45
+ACCOUNT_MIN_CARD_H = 28
+ACCOUNT_DEFAULT_GAP = 4
 
 
 def env_bool(name: str, default: bool) -> bool:
@@ -88,25 +95,31 @@ def env_bool(name: str, default: bool) -> bool:
 
 def load_widget_config(default_always_on_top: bool, default_all_spaces: bool) -> dict[str, Any]:
     config = {
-        "always_on_top": default_always_on_top,
         "all_spaces": default_all_spaces,
+        "always_on_top": default_always_on_top,
+        "auto_visible_refresh": False,
     }
     try:
         payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     except Exception:
         return config
-    if isinstance(payload, dict) and "always_on_top" in payload:
-        config["always_on_top"] = bool(payload["always_on_top"])
-    if isinstance(payload, dict) and "all_spaces" in payload:
-        config["all_spaces"] = bool(payload["all_spaces"])
+    if isinstance(payload, dict):
+        if "always_on_top" in payload:
+            config["always_on_top"] = bool(payload["always_on_top"])
+        if "all_spaces" in payload:
+            config["all_spaces"] = bool(payload["all_spaces"])
+        if "auto_visible_refresh" in payload:
+            config["auto_visible_refresh"] = bool(payload["auto_visible_refresh"])
+            config["_auto_visible_config_present"] = True
     return config
 
 
 def save_widget_config(config: dict[str, Any]) -> None:
     try:
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = {key: value for key, value in config.items() if not key.startswith("_")}
         CONFIG_PATH.write_text(
-            json.dumps(config, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
     except Exception:
@@ -177,7 +190,7 @@ def compact_reason(account: dict[str, Any]) -> str:
             labels.append(f"{label}:{count}")
         return ", ".join(labels)
     if counts["cap_open"]:
-        return f"{counts['cap_open']} slots"
+        return f"open {counts['cap_open']} slots"
     return "clear"
 
 
@@ -197,6 +210,219 @@ def node_short_name(name: Any) -> str:
     return text[3:] if text.startswith("gpu") else text
 
 
+def dashboard_api_url(dashboard_url: str, path: str) -> str:
+    return dashboard_url.rstrip("/") + path
+
+
+def guardian_account_state(guardian: dict[str, Any] | None, name: str) -> dict[str, Any]:
+    if not guardian:
+        return {}
+    row = (guardian.get("accounts") or {}).get(str(name))
+    return row if isinstance(row, dict) else {}
+
+
+def guardian_account_attention_reason(guardian: dict[str, Any] | None, name: str) -> str:
+    row = guardian_account_state(guardian, name)
+    if not row:
+        return ""
+    threshold = int((guardian or {}).get("failure_notify_threshold") or 3)
+    failures = int(row.get("headless_failure_count") or 0)
+    status = str(row.get("status") or "")
+    reason = clean_reason(row.get("attention_reason"))
+    if row.get("needs_visible_login") or status == "needs_visible_login":
+        return "visible login"
+    if row.get("age_warning") or reason == "token_age":
+        return "token age"
+    if reason == "headless_failures" or (row.get("attention_required") and failures >= threshold):
+        return "headless failed"
+    if row.get("attention_required"):
+        return shorten(reason, 18)
+    return ""
+
+
+def guardian_account_visible_status(guardian: dict[str, Any] | None, name: str) -> str:
+    if not guardian:
+        return ""
+    visible_refreshes = guardian.get("visible_refreshes") or {}
+    top_row = visible_refreshes.get(str(name))
+    if isinstance(top_row, dict) and top_row.get("status"):
+        return str(top_row.get("status") or "")
+    row = guardian_account_state(guardian, name)
+    visible_row = row.get("visible_refresh") if isinstance(row, dict) else None
+    if isinstance(visible_row, dict):
+        return str(visible_row.get("status") or "")
+    return ""
+
+
+def guardian_visible_refresh_running(guardian: dict[str, Any] | None) -> bool:
+    if not guardian:
+        return False
+    visible_refreshes = guardian.get("visible_refreshes") or {}
+    for row in visible_refreshes.values():
+        if isinstance(row, dict) and row.get("status") == "running":
+            return True
+    for name in (guardian.get("accounts") or {}):
+        if guardian_account_visible_status(guardian, str(name)) == "running":
+            return True
+    return False
+
+
+def guardian_attention_accounts(guardian: dict[str, Any] | None) -> list[str]:
+    if not guardian:
+        return []
+    names = []
+    for name, row in sorted((guardian.get("accounts") or {}).items()):
+        if guardian_account_attention_reason(guardian, str(name)):
+            names.append(str(name))
+    return names
+
+
+def guardian_error_count(guardian: dict[str, Any] | None) -> int:
+    if not guardian:
+        return 0
+    return sum(
+        1
+        for row in (guardian.get("accounts") or {}).values()
+        if row.get("needs_visible_login") or row.get("status") == "needs_visible_login"
+    )
+
+
+def widget_sorted_accounts(
+    accounts: list[dict[str, Any]],
+    guardian: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    def key(account: dict[str, Any]) -> tuple[Any, ...]:
+        name = str(account.get("name") or "")
+        counts = account_counts(account)
+        token_attention = guardian_account_attention_reason(guardian, name)
+        visible_running = guardian_account_visible_status(guardian, name) == "running"
+        hard_attention = (
+            bool(token_attention)
+            or visible_running
+            or account_auth_error(account)
+            or bool(account.get("error"))
+        )
+        open_slots = counts["run_open"] > 0 or counts["cap_open"] > 0
+        reasons = {
+            clean_reason(reason)
+            for reason in ((account.get("summary") or {}).get("pending_reasons") or {})
+        }
+        normal_cap_reasons = {"QOSMaxJobsPerUserLimit", "QOSMaxSubmitJobPerUserLimit"}
+        unusual_pending = bool(reasons and not reasons.issubset(normal_cap_reasons))
+        priority = 0 if hard_attention else 1 if open_slots else 2 if unusual_pending else 3
+        return (
+            priority,
+            -counts["run_open"],
+            -counts["cap_open"],
+            -counts["running"],
+            -counts["pending"],
+            name,
+        )
+
+    return sorted(accounts, key=key)
+
+
+def widget_footer_y(view_height: float) -> float:
+    return max(ACCOUNT_START_Y + 150, view_height - ACCOUNT_FOOTER_BOTTOM_MARGIN)
+
+
+def account_row_layout(row_count: int, view_height: float = DEFAULT_HEIGHT) -> list[tuple[float, float]]:
+    if row_count <= 0:
+        return []
+    available = max(ACCOUNT_MIN_CARD_H, widget_footer_y(view_height) - ACCOUNT_START_Y - 24)
+    gap = ACCOUNT_DEFAULT_GAP
+    card_h = min(
+        ACCOUNT_DEFAULT_CARD_H,
+        max(ACCOUNT_MIN_CARD_H, int((available - gap * (row_count - 1)) / row_count)),
+    )
+    return [
+        (ACCOUNT_START_Y + index * (card_h + gap), float(card_h))
+        for index in range(row_count)
+    ]
+
+
+def max_account_scroll_offset(account_count: int) -> int:
+    return max(0, account_count - ACCOUNT_VISIBLE_ROWS)
+
+
+def clamp_account_scroll_offset(offset: int, account_count: int) -> int:
+    return max(0, min(max_account_scroll_offset(account_count), int(offset)))
+
+
+def fetch_guardian_status(dashboard_url: str, timeout: int = 3) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        with urllib.request.urlopen(
+            dashboard_api_url(dashboard_url, "/api/token-guardian/status"),
+            timeout=timeout,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as error:
+        return None, str(error)
+    return payload.get("guardian") or {}, None
+
+
+def post_guardian_json(
+    dashboard_url: str,
+    path: str,
+    payload: dict[str, Any],
+    timeout: int = 4,
+) -> tuple[dict[str, Any] | None, str | None]:
+    body = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        dashboard_api_url(dashboard_url, path),
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as error:
+        return None, str(error)
+    return data.get("guardian") or {}, None
+
+
+def guardian_state_signature(guardian: dict[str, Any] | None) -> str:
+    if not guardian:
+        return ""
+    accounts = []
+    for name, row in sorted((guardian.get("accounts") or {}).items()):
+        accounts.append(
+            {
+                "name": name,
+                "status": row.get("status"),
+                "attention": row.get("attention_required"),
+                "reason": row.get("attention_reason"),
+                "failures": row.get("headless_failure_count"),
+                "age_warning": row.get("age_warning"),
+                "visible": (row.get("visible_refresh") or {}).get("status"),
+            }
+        )
+    visible_refreshes = []
+    for name, row in sorted((guardian.get("visible_refreshes") or {}).items()):
+        if not isinstance(row, dict):
+            continue
+        visible_refreshes.append(
+            {
+                "name": name,
+                "status": row.get("status"),
+                "returncode": row.get("returncode"),
+                "started_at": row.get("started_at"),
+                "finished_at": row.get("finished_at"),
+            }
+        )
+    return json.dumps(
+        {
+            "auto_visible_refresh": guardian.get("auto_visible_refresh"),
+            "notifications_enabled": guardian.get("notifications_enabled"),
+            "visible_refreshes": visible_refreshes,
+            "accounts": accounts,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
 def top_y(view_height: float, y: float, height: float) -> float:
     return view_height - y - height
 
@@ -207,6 +433,8 @@ class WidgetView(NSView):
         if self is None:
             return None
         self.payload = None
+        self.guardian = None
+        self.guardian_error = None
         self.error = None
         self.refreshing = False
         self.last_refresh_started_at = None
@@ -214,6 +442,9 @@ class WidgetView(NSView):
         self.dashboard_url = DEFAULT_DASHBOARD_URL
         self.always_on_top = True
         self.pin_button_rect = (0.0, 0.0, 0.0, 0.0)
+        self.token_account_rects = {}
+        self.token_requesting_accounts = set()
+        self.account_scroll_offset = 0
         return self
 
     def acceptsFirstMouse_(self, event):
@@ -231,6 +462,12 @@ class WidgetView(NSView):
             if delegate is not None:
                 delegate.toggleAlwaysOnTop_(self)
             return
+        for account_name, rect in list(self.token_account_rects.items()):
+            if self.event_hits_top_rect(event, rect):
+                delegate = NSApp.delegate()
+                if delegate is not None:
+                    delegate.openTokenLoginForAccount_(account_name)
+                return
         objc.super(WidgetView, self).mouseDown_(event)
 
     def mouseDragged_(self, event):
@@ -243,11 +480,50 @@ class WidgetView(NSView):
         frame.origin.y -= delta[1]
         window.setFrame_display_(frame, True)
 
+    def scrollWheel_(self, event):
+        accounts = widget_sorted_accounts((self.payload or {}).get("accounts") or [], self.guardian)
+        max_offset = max_account_scroll_offset(len(accounts))
+        if max_offset <= 0:
+            objc.super(WidgetView, self).scrollWheel_(event)
+            return
+        delta_y = float(event.scrollingDeltaY())
+        if delta_y == 0:
+            objc.super(WidgetView, self).scrollWheel_(event)
+            return
+        step = -1 if delta_y > 0 else 1
+        next_offset = clamp_account_scroll_offset(self.account_scroll_offset + step, len(accounts))
+        if next_offset != self.account_scroll_offset:
+            self.account_scroll_offset = next_offset
+            self.setNeedsDisplay_(True)
+
     def menuForEvent_(self, event):
         menu = NSMenu.alloc().initWithTitle_("BJTU HPC Widget")
         dashboard = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Open Dashboard", "openDashboard:", "")
         dashboard.setTarget_(NSApp.delegate())
         menu.addItem_(dashboard)
+        auto_title = (
+            "Auto Token Login: On"
+            if bool((self.guardian or {}).get("auto_visible_refresh"))
+            else "Auto Token Login: Off"
+        )
+        auto_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(auto_title, "toggleAutoVisibleRefresh:", "")
+        auto_item.setTarget_(NSApp.delegate())
+        menu.addItem_(auto_item)
+        delegate = NSApp.delegate()
+        all_spaces = bool(getattr(delegate, "all_spaces", False)) if delegate is not None else False
+        spaces_title = "All Desktops: On" if all_spaces else "All Desktops: Off"
+        spaces_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(spaces_title, "toggleAllSpaces:", "")
+        spaces_item.setTarget_(delegate)
+        menu.addItem_(spaces_item)
+        attention = guardian_attention_accounts(self.guardian)
+        login_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            f"Open Token Login ({len(attention)})" if attention else "Open Token Login",
+            "openTokenLogin:",
+            "",
+        )
+        login_item.setTarget_(NSApp.delegate())
+        login_item.setEnabled_(bool(attention))
+        menu.addItem_(login_item)
         menu.addItem_(NSMenuItem.separatorItem())
         quit_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Quit Widget", "quit:", "")
         quit_item.setTarget_(NSApp.delegate())
@@ -259,7 +535,46 @@ class WidgetView(NSView):
         self.error = error
         self.refreshing = refreshing
         if payload:
+            accounts = widget_sorted_accounts(payload.get("accounts") or [], self.guardian)
+            self.account_scroll_offset = clamp_account_scroll_offset(
+                self.account_scroll_offset,
+                len(accounts),
+            )
+        if payload:
             self.updated_at = payload.get("checked_at_local") or datetime.now().isoformat(timespec="seconds")
+        self.setNeedsDisplay_(True)
+
+    def setGuardian_error_(self, guardian, error):
+        self.guardian = guardian
+        self.guardian_error = error
+        if self.payload:
+            accounts = widget_sorted_accounts(self.payload.get("accounts") or [], guardian)
+            self.account_scroll_offset = clamp_account_scroll_offset(
+                self.account_scroll_offset,
+                len(accounts),
+            )
+        if guardian:
+            for name in list(self.token_requesting_accounts):
+                visible_status = guardian_account_visible_status(guardian, name)
+                if visible_status and visible_status != "running":
+                    self.token_requesting_accounts.discard(name)
+        self.setNeedsDisplay_(True)
+
+    def mark_token_login_request(self, accounts):
+        if isinstance(accounts, str):
+            names = [accounts]
+        else:
+            names = list(accounts or [])
+        self.token_requesting_accounts.update(str(name) for name in names if str(name).strip())
+        self.setNeedsDisplay_(True)
+
+    def finish_token_login_request(self, accounts):
+        if isinstance(accounts, str):
+            names = [accounts]
+        else:
+            names = list(accounts or [])
+        for name in names:
+            self.token_requesting_accounts.discard(str(name))
         self.setNeedsDisplay_(True)
 
     def setDashboardURL_(self, url):
@@ -480,13 +795,13 @@ class WidgetView(NSView):
             )
             self.draw_text(label, x + 9, y, chip_w - 9, 12, 9.5, "muted", "bold")
 
-    def draw_account(self, account, index):
-        y = 184 + index * 49
+    def draw_account(self, account, index, y=None, card_h=None):
+        y = 184 + index * 49 if y is None else float(y)
+        card_h = 45 if card_h is None else float(card_h)
         view_height = self.bounds().size.height
         width = self.bounds().size.width
         card_x = 10
         card_w = width - 20
-        card_h = 45
         rect = NSMakeRect(card_x, top_y(view_height, y, card_h), card_w, card_h)
         fill = COLORS["panel_alt"] if index % 2 else COLORS["panel"]
         self.rounded_rect(rect, 12, fill, COLORS["stroke"])
@@ -494,7 +809,11 @@ class WidgetView(NSView):
         name = str(account.get("name") or "unknown")
         status = account_status(account)
         counts = account_counts(account)
-        dot = status_color(status)
+        token_attention_reason = guardian_account_attention_reason(self.guardian, name)
+        visible_status = guardian_account_visible_status(self.guardian, name)
+        token_risky = bool(token_attention_reason) or account_auth_error(account)
+        visible_running = visible_status == "running"
+        dot = COLORS["cyan"] if visible_running else COLORS["violet"] if token_risky else status_color(status)
         inner_left = card_x + 10
         inner_right = card_x + card_w - 10
         identity_w = 64
@@ -502,12 +821,27 @@ class WidgetView(NSView):
         metric_x = inner_left + identity_w + metric_gap
         metric_w = inner_right - metric_x
         col_w = metric_w / 4
+        dot_y = y + max(0, (card_h - 8) / 2)
+        name_y = y + max(0, (card_h - 18) / 2)
+        metric_y = y + (4 if card_h < 43 else 6)
+        rule_y = y + 8
+        rule_h = max(18, card_h - 20)
+        detail_y = y + max(26, card_h - 12)
 
-        self.draw_status_dot(inner_left, y + 19, 8, dot)
-        self.draw_text(shorten(name, 7), inner_left + 15, y + 14, identity_w - 15, 18, 13.0, status_tone(status), "bold")
+        self.draw_status_dot(inner_left, dot_y, 8, dot)
+        if token_risky:
+            self.token_account_rects[name] = (card_x, y, card_w, card_h)
+        name_tone = "cyan" if visible_running else "violet" if token_risky else status_tone(status)
+        self.draw_text(shorten(name, 7), inner_left + 15, name_y, identity_w - 15, 18, 13.0, name_tone, "bold")
 
-        if account_auth_error(account):
-            detail = compact_reason(account)
+        if name in self.token_requesting_accounts and not visible_status:
+            detail = "opening login"
+            tone = "cyan"
+        elif visible_running:
+            detail = "login running"
+            tone = "cyan"
+        elif token_risky:
+            detail = token_attention_reason or compact_reason(account)
             tone = "violet"
         elif account.get("error"):
             detail = compact_reason(account)
@@ -521,17 +855,17 @@ class WidgetView(NSView):
                 detail = compact_reason(account)
                 tone = "soft"
         for col in range(1, 4):
-            self.draw_vrule(metric_x + col * col_w, y + 9, 24)
+            self.draw_vrule(metric_x + col * col_w, rule_y, rule_h)
 
         wait_tone = "amber" if counts["pending"] else "soft"
-        self.draw_metric("RUN", str(counts["running"]), metric_x, y + 6, col_w, "text")
-        self.draw_metric("G / C", account_running_resource_label(account), metric_x + col_w, y + 6, col_w, "text")
-        self.draw_metric("JOBS", f"{counts['total']}/{counts['cap']}", metric_x + col_w * 2, y + 6, col_w, "text")
-        self.draw_metric("WAIT", str(counts["pending"]), metric_x + col_w * 3, y + 6, col_w, wait_tone)
+        self.draw_metric("RUN", str(counts["running"]), metric_x, metric_y, col_w, "text")
+        self.draw_metric("G / C", account_running_resource_label(account), metric_x + col_w, metric_y, col_w, "text")
+        self.draw_metric("JOBS", f"{counts['total']}/{counts['cap']}", metric_x + col_w * 2, metric_y, col_w, "text")
+        self.draw_metric("WAIT", str(counts["pending"]), metric_x + col_w * 3, metric_y, col_w, wait_tone)
         self.draw_text(
             shorten(detail, 34),
             metric_x,
-            y + 33,
+            detail_y,
             metric_w,
             11,
             9.5,
@@ -560,16 +894,55 @@ class WidgetView(NSView):
             self.draw_text(text, x + 11, y, 124, 17, 10.5, "muted")
             x += 120
 
-    def draw_footer(self, account_count):
-        self.draw_text(str(account_count), 20, 448, 16, 16, 10.5, "text", "bold")
-        self.draw_text("accounts", 40, 448, 78, 16, 10.5, "muted")
+    def draw_account_scroll_indicator(self, account_count, visible_count):
+        if account_count <= visible_count:
+            return
+        width = self.bounds().size.width
+        view_height = self.bounds().size.height
+        layouts = account_row_layout(visible_count, view_height)
+        if not layouts:
+            return
+        first_y, _ = layouts[0]
+        last_y, last_h = layouts[-1]
+        track_y = first_y + 2
+        track_h = max(28, last_y + last_h - first_y - 4)
+        track_x = width - 15
+        track_rect = NSMakeRect(track_x, top_y(view_height, track_y, track_h), 3, track_h)
+        self.rounded_rect(track_rect, 1.5, COLORS["bar_bg"])
+        max_offset = max_account_scroll_offset(account_count)
+        thumb_h = max(18, track_h * visible_count / max(account_count, 1))
+        thumb_y = track_y
+        if max_offset:
+            thumb_y += (track_h - thumb_h) * self.account_scroll_offset / max_offset
+        thumb_rect = NSMakeRect(track_x, top_y(view_height, thumb_y, thumb_h), 3, thumb_h)
+        self.rounded_rect(thumb_rect, 1.5, COLORS["soft"])
+
+    def draw_footer(self, account_count, visible_count=None):
+        visible_count = account_count if visible_count is None else int(visible_count)
+        view_height = self.bounds().size.height
+        footer_y = widget_footer_y(view_height)
+        start = self.account_scroll_offset + 1 if account_count else 0
+        end = min(account_count, self.account_scroll_offset + visible_count)
+        count_label = f"{start}-{end}/{account_count}" if account_count > visible_count else str(account_count)
+        self.draw_text(count_label, 20, footer_y, 48, 16, 10.5, "text", "bold")
+        self.draw_text("accounts", 70, footer_y, 48, 16, 10.5, "muted")
+        attention_count = len(guardian_attention_accounts(self.guardian))
+        invalid_count = guardian_error_count(self.guardian)
         if self.refreshing:
-            self.draw_text("refreshing", 112, 448, 92, 16, 10.5, "cyan", "bold")
+            self.draw_text("refreshing", 120, footer_y, 76, 16, 10.5, "cyan", "bold")
         elif self.error:
-            self.draw_text("network error", 112, 448, 118, 16, 10.5, "red", "bold")
+            self.draw_text("network error", 120, footer_y, 96, 16, 10.5, "red", "bold")
+        elif guardian_visible_refresh_running(self.guardian):
+            self.draw_text("token login", 120, footer_y, 84, 16, 10.5, "cyan", "bold")
+        elif attention_count:
+            tone = "red" if invalid_count else "violet"
+            self.draw_text(f"token {attention_count}", 120, footer_y, 76, 16, 10.5, tone, "bold")
+        elif self.guardian and self.guardian.get("auto_visible_refresh"):
+            self.draw_text("auto token", 120, footer_y, 78, 16, 10.5, "cyan", "bold")
 
     def draw_status_legend(self, compact=False):
         width = self.bounds().size.width
+        footer_y = widget_footer_y(self.bounds().size.height)
         items = (
             [
                 ("F", COLORS["green"]),
@@ -588,7 +961,7 @@ class WidgetView(NSView):
             ]
         )
         x = width - (85 if compact else 198)
-        y = 448
+        y = footer_y
         for label, fill in items:
             self.draw_status_dot(x, y + 4, 5, fill)
             label_w = 8 if compact else 32 if label == "token" else 18 if label == "err" else 25
@@ -597,6 +970,7 @@ class WidgetView(NSView):
 
     def drawRect_(self, dirty_rect):
         bounds = self.bounds()
+        self.token_account_rects = {}
         self.rounded_rect(bounds, 18, COLORS["bg"], COLORS["stroke"])
         self.rounded_rect(
             NSMakeRect(10, bounds.size.height - 102, bounds.size.width - 20, 90),
@@ -608,12 +982,24 @@ class WidgetView(NSView):
         if self.payload:
             self.draw_overview(self.payload)
             self.draw_cluster_resources(self.payload)
-            accounts = sorted_accounts(self.payload.get("accounts") or [])
-            for index, account in enumerate(accounts[:5]):
-                self.draw_account(account, index)
-            self.draw_status_legend(compact=bool(self.refreshing or self.error))
-            if len(accounts) >= 5:
-                self.draw_footer(len(accounts))
+            accounts = widget_sorted_accounts(self.payload.get("accounts") or [], self.guardian)
+            self.account_scroll_offset = clamp_account_scroll_offset(
+                self.account_scroll_offset,
+                len(accounts),
+            )
+            visible_accounts = accounts[
+                self.account_scroll_offset : self.account_scroll_offset + ACCOUNT_VISIBLE_ROWS
+            ]
+            layouts = account_row_layout(len(visible_accounts), bounds.size.height)
+            for index, (account, layout) in enumerate(zip(visible_accounts, layouts)):
+                row_y, card_h = layout
+                self.draw_account(account, index, row_y, card_h)
+            self.draw_account_scroll_indicator(len(accounts), len(visible_accounts))
+            self.draw_status_legend(
+                compact=bool(self.refreshing or self.error or guardian_attention_accounts(self.guardian))
+            )
+            if len(accounts) >= ACCOUNT_VISIBLE_ROWS:
+                self.draw_footer(len(accounts), len(visible_accounts))
             else:
                 self.draw_jobs_strip(self.payload)
             return
@@ -640,6 +1026,8 @@ class WidgetDelegate(NSObject):
         self.slurm_dir = os.getenv("HPC_MONITOR_SLURM_DIR", DEFAULT_SLURM_DIR)
         self.accounts = os.getenv("HPC_MONITOR_ACCOUNTS") or None
         self.base_interval = env_int("HPC_MONITOR_INTERVAL", 60, minimum=15)
+        self.active_interval = env_int("HPC_MONITOR_ACTIVE_INTERVAL", 5, minimum=3)
+        self.guardian_poll_interval = env_int("HPC_MONITOR_GUARDIAN_INTERVAL", 3, minimum=1)
         self.max_interval = max(
             self.base_interval,
             env_int("HPC_MONITOR_MAX_INTERVAL", 600, minimum=self.base_interval),
@@ -656,11 +1044,16 @@ class WidgetDelegate(NSObject):
         )
         self.always_on_top = bool(self.config.get("always_on_top", True))
         self.all_spaces = bool(self.config.get("all_spaces", False))
+        self.auto_visible_refresh = bool(self.config.get("auto_visible_refresh", False))
         self.window = None
         self.view = None
         self.timer = None
+        self.guardian_timer = None
         self.refreshing = False
+        self.guardian_polling = False
+        self.pending_queue_refresh_after_token_login = False
         self.last_state_signature = None
+        self.last_guardian_signature = None
         self.stable_refreshes = 0
         return self
 
@@ -688,6 +1081,8 @@ class WidgetDelegate(NSObject):
         self.view.setAlwaysOnTop_(self.always_on_top)
         self.window.setContentView_(self.view)
         self.window.makeKeyAndOrderFront_(None)
+        if self.config.get("_auto_visible_config_present"):
+            self.sync_guardian_config()
         self.refresh_(None)
 
     def apply_window_level(self):
@@ -700,7 +1095,7 @@ class WidgetDelegate(NSObject):
     def apply_window_collection_behavior(self):
         if self.window is None:
             return
-        behavior = NSWindowCollectionBehaviorStationary | NSWindowCollectionBehaviorFullScreenAuxiliary
+        behavior = NSWindowCollectionBehaviorFullScreenAuxiliary
         if self.all_spaces:
             behavior |= NSWindowCollectionBehaviorCanJoinAllSpaces
         self.window.setCollectionBehavior_(behavior)
@@ -713,9 +1108,19 @@ class WidgetDelegate(NSObject):
         if self.view:
             self.view.setAlwaysOnTop_(self.always_on_top)
 
+    def toggleAllSpaces_(self, sender):
+        self.all_spaces = not self.all_spaces
+        self.config["all_spaces"] = self.all_spaces
+        save_widget_config(self.config)
+        self.apply_window_collection_behavior()
+
     def timerFired_(self, timer):
         self.timer = None
         self.refresh_(None)
+
+    def guardianTimerFired_(self, timer):
+        self.guardian_timer = None
+        self.poll_guardian_status()
 
     def refresh_(self, sender):
         if self.refreshing:
@@ -737,17 +1142,28 @@ class WidgetDelegate(NSObject):
             self.timeout,
             self.all_partitions,
         )
-        AppHelper.callAfter(self.apply_refresh_result, payload, error, returncode)
+        guardian, guardian_error = fetch_guardian_status(self.dashboard_url)
+        AppHelper.callAfter(self.apply_refresh_result, payload, error, returncode, guardian, guardian_error)
 
-    def update_refresh_cadence(self, payload, returncode):
+    def update_refresh_cadence(self, payload, returncode, guardian):
+        active_token_login = guardian_visible_refresh_running(guardian)
         if payload is None:
             self.stable_refreshes = 0
-            self.interval = self.base_interval
+            self.interval = self.active_interval if active_token_login else self.base_interval
             return
         signature = queue_state_signature(payload)
-        changed = self.last_state_signature is None or self.last_state_signature != signature
+        guardian_signature = guardian_state_signature(guardian)
+        changed = (
+            self.last_state_signature is None
+            or self.last_state_signature != signature
+            or self.last_guardian_signature != guardian_signature
+        )
         self.last_state_signature = signature
-        if returncode != 0 or changed:
+        self.last_guardian_signature = guardian_signature
+        if active_token_login:
+            self.stable_refreshes = 0
+            self.interval = self.active_interval
+        elif returncode != 0 or changed:
             self.stable_refreshes = 0
             self.interval = self.base_interval
         else:
@@ -765,17 +1181,116 @@ class WidgetDelegate(NSObject):
             self.interval, self, "timerFired:", None, False
         )
 
-    def apply_refresh_result(self, payload, error, returncode):
-        self.update_refresh_cadence(payload, returncode)
+    def apply_refresh_result(self, payload, error, returncode, guardian, guardian_error):
+        self.update_refresh_cadence(payload, returncode, guardian)
         self.refreshing = False
         if self.view:
             visible_payload = payload if payload is not None else self.view.payload
             visible_error = error if (returncode != 0 or payload is None) else None
             self.view.updateState_error_refreshing_(visible_payload, visible_error, False)
+            self.view.setGuardian_error_(guardian, guardian_error)
         self.schedule_next_refresh()
+
+    def schedule_guardian_poll(self, delay=None):
+        if self.guardian_timer is not None:
+            self.guardian_timer.invalidate()
+        interval = self.guardian_poll_interval if delay is None else max(0.5, float(delay))
+        self.guardian_timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+            interval, self, "guardianTimerFired:", None, False
+        )
+
+    def poll_guardian_status(self):
+        if self.guardian_polling:
+            return
+        self.guardian_polling = True
+
+        def worker() -> None:
+            guardian, error = fetch_guardian_status(self.dashboard_url)
+            AppHelper.callAfter(self.apply_guardian_poll_result, guardian, error)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def apply_guardian_poll_result(self, guardian, error):
+        self.guardian_polling = False
+        if self.view:
+            self.view.setGuardian_error_(guardian if guardian is not None else self.view.guardian, error)
+        if guardian is not None:
+            self.last_guardian_signature = guardian_state_signature(guardian)
+        if guardian_visible_refresh_running(guardian):
+            self.schedule_guardian_poll()
+            return
+        if self.pending_queue_refresh_after_token_login:
+            self.pending_queue_refresh_after_token_login = False
+            self.refresh_(None)
 
     def openDashboard_(self, sender):
         subprocess.Popen(["/usr/bin/open", self.dashboard_url])
+
+    def guardian_payload(self) -> dict[str, Any]:
+        return {
+            "accounts": "all",
+            "auto_visible_refresh": self.auto_visible_refresh,
+            "notifications_enabled": True,
+        }
+
+    def sync_guardian_config(self):
+        def worker() -> None:
+            post_guardian_json(self.dashboard_url, "/api/token-guardian/start", self.guardian_payload())
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def toggleAutoVisibleRefresh_(self, sender):
+        self.auto_visible_refresh = not self.auto_visible_refresh
+        self.config["auto_visible_refresh"] = self.auto_visible_refresh
+        self.config["_auto_visible_config_present"] = True
+        save_widget_config(self.config)
+        self.sync_guardian_config()
+        self.refresh_(None)
+
+    def request_token_login(self, accounts: list[str]) -> None:
+        accounts = [str(account).strip() for account in accounts if str(account).strip()]
+        if not accounts:
+            return
+        self.pending_queue_refresh_after_token_login = True
+        if self.view:
+            self.view.mark_token_login_request(accounts)
+
+        def worker() -> None:
+            guardian, error = post_guardian_json(
+                self.dashboard_url,
+                "/api/token-guardian/visible-refresh",
+                {"accounts": ",".join(accounts)},
+                timeout=5,
+            )
+            AppHelper.callAfter(self.apply_token_login_result, accounts, guardian, error)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def apply_token_login_result(self, accounts, guardian, error):
+        if self.view:
+            self.view.finish_token_login_request(accounts)
+            if guardian is not None:
+                self.view.setGuardian_error_(guardian, error)
+            elif error:
+                self.view.setGuardian_error_(self.view.guardian, error)
+        if guardian_visible_refresh_running(guardian):
+            self.schedule_guardian_poll(delay=1)
+        else:
+            self.pending_queue_refresh_after_token_login = False
+            self.refresh_(None)
+
+    def openTokenLoginForAccount_(self, account_name):
+        name = str(account_name or "").strip()
+        if not name:
+            return
+        self.request_token_login([name])
+
+    def openTokenLogin_(self, sender):
+        guardian = self.view.guardian if self.view else None
+        accounts = guardian_attention_accounts(guardian)
+        if not accounts:
+            return
+        self.request_token_login(accounts)
 
     def quit_(self, sender):
         NSApp.terminate_(self)
@@ -943,11 +1458,14 @@ def render_preview(payload: dict[str, Any], path: Path) -> None:
         "ERROR": (234, 72, 82),
     }
     status_name_rgb = status_rgb
-    for index, account in enumerate(sorted_accounts(payload.get("accounts") or [])[:5]):
-        y = 184 + index * 49
+    accounts = sorted_accounts(payload.get("accounts") or [])
+    visible_accounts = accounts[:ACCOUNT_VISIBLE_ROWS]
+    for index, (account, layout) in enumerate(
+        zip(visible_accounts, account_row_layout(len(visible_accounts), height))
+    ):
+        y, card_h = layout
         card_x = 10
         card_w = width - 20
-        card_h = 45
         fill = (32, 37, 49, 210) if index % 2 == 0 else (38, 44, 58, 200)
         draw.rounded_rectangle((card_x, y, card_x + card_w, y + card_h), radius=12, fill=fill, outline=(255, 255, 255, 28))
         name = str(account.get("name") or "unknown")
@@ -962,17 +1480,23 @@ def render_preview(payload: dict[str, Any], path: Path) -> None:
         metric_x = inner_left + identity_w + metric_gap
         metric_w = inner_right - metric_x
         col_w = metric_w / 4
-        draw.ellipse((inner_left, y + 19, inner_left + 8, y + 27), fill=rgb)
-        draw_fit_text(name, (inner_left + 15, y + 14, identity_w - 15, 18), font, name_rgb)
+        dot_y = y + max(0, (card_h - 8) / 2)
+        name_y = y + max(0, (card_h - 18) / 2)
+        metric_y = y + (4 if card_h < 43 else 6)
+        rule_y = y + 8
+        rule_h = max(18, card_h - 20)
+        detail_y = y + max(26, card_h - 12)
+        draw.ellipse((inner_left, dot_y, inner_left + 8, dot_y + 8), fill=rgb)
+        draw_fit_text(name, (inner_left + 15, name_y, identity_w - 15, 18), font, name_rgb)
 
         for col in range(1, 4):
             rule_x = int(metric_x + col * col_w)
-            draw.line((rule_x, y + 9, rule_x, y + 33), fill=(255, 255, 255, 24), width=1)
+            draw.line((rule_x, rule_y, rule_x, rule_y + rule_h), fill=(255, 255, 255, 24), width=1)
         wait_fill = (242, 164, 56) if c["pending"] else (128, 145, 166)
-        draw_metric("RUN", str(c["running"]), metric_x, y + 6, col_w, (240, 245, 250))
-        draw_metric("G / C", account_running_resource_label(account), metric_x + col_w, y + 6, col_w, (240, 245, 250))
-        draw_metric("JOBS", f"{c['total']}/{c['cap']}", metric_x + col_w * 2, y + 6, col_w, (240, 245, 250))
-        draw_metric("WAIT", str(c["pending"]), metric_x + col_w * 3, y + 6, col_w, wait_fill)
+        draw_metric("RUN", str(c["running"]), metric_x, metric_y, col_w, (240, 245, 250))
+        draw_metric("G / C", account_running_resource_label(account), metric_x + col_w, metric_y, col_w, (240, 245, 250))
+        draw_metric("JOBS", f"{c['total']}/{c['cap']}", metric_x + col_w * 2, metric_y, col_w, (240, 245, 250))
+        draw_metric("WAIT", str(c["pending"]), metric_x + col_w * 3, metric_y, col_w, wait_fill)
         detail = compact_reason(account)
         reasons = ((account.get("summary") or {}).get("pending_reasons") or {})
         if account_auth_error(account):
@@ -983,7 +1507,7 @@ def render_preview(payload: dict[str, Any], path: Path) -> None:
             detail_fill = (242, 164, 56)
         else:
             detail_fill = (128, 145, 166)
-        draw_fit_text(detail, (metric_x, y + 33, metric_w, 11), small, detail_fill, "center")
+        draw_fit_text(detail, (metric_x, detail_y, metric_w, 11), small, detail_fill, "center")
     legend = [
         ("full", (48, 186, 120), 25),
         ("room", (58, 171, 218), 25),
@@ -992,13 +1516,34 @@ def render_preview(payload: dict[str, Any], path: Path) -> None:
         ("err", (234, 72, 82), 18),
     ]
     legend_x = width - 198
+    footer_y = widget_footer_y(height)
     for label, fill, label_w in legend:
-        draw.ellipse((legend_x, 452, legend_x + 5, 457), fill=fill)
-        draw_fit_text(label, (legend_x + 8, 448, label_w, 12), small, (178, 190, 208))
+        draw.ellipse((legend_x, footer_y + 4, legend_x + 5, footer_y + 9), fill=fill)
+        draw_fit_text(label, (legend_x + 8, footer_y, label_w, 12), small, (178, 190, 208))
         legend_x += label_w + 15
-    if len(payload.get("accounts") or []) >= 5:
-        draw_fit_text(str(len(payload.get("accounts") or [])), (20, 448, 16, 16), small, (240, 245, 250))
-        draw_fit_text("accounts", (40, 448, 78, 16), small, (178, 190, 208))
+    if len(accounts) >= ACCOUNT_VISIBLE_ROWS:
+        count_label = f"1-{len(visible_accounts)}/{len(accounts)}"
+        draw_fit_text(count_label, (20, footer_y, 48, 16), small, (240, 245, 250))
+        draw_fit_text("accounts", (70, footer_y, 48, 16), small, (178, 190, 208))
+        if len(accounts) > len(visible_accounts):
+            layouts = account_row_layout(len(visible_accounts), height)
+            if layouts:
+                first_y, _ = layouts[0]
+                last_y, last_h = layouts[-1]
+                track_y = first_y + 2
+                track_h = max(28, last_y + last_h - first_y - 4)
+                track_x = width - 15
+                thumb_h = max(18, track_h * len(visible_accounts) / max(len(accounts), 1))
+                draw.rounded_rectangle(
+                    (track_x, track_y, track_x + 3, track_y + track_h),
+                    radius=2,
+                    fill=(255, 255, 255, 28),
+                )
+                draw.rounded_rectangle(
+                    (track_x, track_y, track_x + 3, track_y + thumb_h),
+                    radius=2,
+                    fill=(128, 145, 166),
+                )
     image.save(path)
 
 

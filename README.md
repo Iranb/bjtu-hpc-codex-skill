@@ -63,7 +63,7 @@ cd "<SLURM_DIR>"
 "<PYTHON3>" hpc_dashboard_service.py status
 ```
 
-The guardian should validate saved accounts on a schedule, refresh headlessly with `--clear-existing-token` when a token becomes stale or invalid, and mark an account as needing visible login when CAS/OAuth can no longer complete without a captcha. It must never print token, password, cookie, browser-storage, or temporary certificate values.
+The guardian should validate saved accounts on a schedule, refresh headlessly with `--clear-existing-token` when a token becomes stale or invalid, and use a 5-day token-age warning as pre-expiry maintenance. A token-age warning is not proof that the token is invalid. The guardian should mark an account as needing visible login when CAS/OAuth can no longer complete without a captcha. It must never print token, password, cookie, browser-storage, or temporary certificate values.
 
 ## Dataset Layout
 

@@ -68,9 +68,20 @@ Uninstall:
 Right-click the widget to open the dashboard or quit. Drag anywhere on the widget to move it.
 Click the pin icon in the top-right corner to toggle Always On Top; the choice is saved in
 `~/Library/Application Support/BJTUHPCWidget/config.json`.
+Use the right-click `All Desktops` toggle to choose whether the widget follows every
+macOS desktop/Space. Keep it off if you want to move the widget to another Space through
+Mission Control.
+The right-click menu also includes `Auto Token Login`. When enabled, the dashboard Token
+Guardian can automatically open a visible Playwright login window for accounts whose token
+needs attention. You still need to enter the CAS captcha/verification code and close the
+browser window after the HPC portal loads. `Open Token Login` manually opens visible login
+windows for accounts currently marked as token-risky. A purple account name in the widget is
+also clickable and opens the visible login window for that account only. The default
+token-age warning threshold is 5 days; token age is a maintenance warning, not proof that
+the token is already invalid.
 By default, Always On Top is scoped to the current macOS Space. Set
-`HPC_WIDGET_ALL_SPACES=1` before launch or install if the widget should follow
-every Space.
+`HPC_WIDGET_ALL_SPACES=1` before installing or launching, or use the right-click toggle, if
+it should follow all Spaces.
 The bottom-right legend maps account-name colors: green `full`, blue `room`,
 amber `open`, purple `token` for accounts that need token refresh, and red
 `err` for non-auth query or network errors.
@@ -122,7 +133,7 @@ export HPC_MONITOR_TIMEOUT=45
 export HPC_MONITOR_ACCOUNTS=main,other
 export HPC_MONITOR_ALL_PARTITIONS=0
 export HPC_WIDGET_WIDTH=320
-export HPC_WIDGET_HEIGHT=466
+export HPC_WIDGET_HEIGHT=370
 export HPC_WIDGET_ALWAYS_ON_TOP=1
 export HPC_WIDGET_ALL_SPACES=0
 ```
