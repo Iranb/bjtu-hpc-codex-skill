@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 
-LABEL="local.bjtu-hpc-menubar-monitor"
+LABEL="com.iranb.bjtu-hpc-menubar-monitor"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 RUNTIME_DIR="$HOME/Library/BJTUHPCMonitor"
 

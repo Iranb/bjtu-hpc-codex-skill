@@ -1,4 +1,4 @@
 interface:
   display_name: "BJTU HPC Submit"
-  short_description: "Manage BJTU HPC auth, data reuse, multi-account runs, and job evidence"
-  default_prompt: "Use $bjtu-hpc-submit to refresh BJTU HPC auth, summarize native queues, manage saved portal accounts, reuse shared datasets safely, submit packed GPU jobs with CPU fallback down to emergency 4 CPUs and 2GPU-to-1GPU compatibility fallback, verify Slurm CPU/GRES allocation and pending reasons, monitor transfer progress, and collect job evidence without exposing secrets."
+  short_description: "Submit and verify BJTU HPC GPU jobs"
+  default_prompt: "Use $bjtu-hpc-submit to refresh auth, upload my script or data, preflight native sbatch runability with ordinary 1GPU/6CPU shapes and 1GPU/4CPU resource-wait fallback, low-VRAM GPU-sharing when each child stays below 16GB, and 2GPU-to-1GPU compatibility fallback, fill selected accounts with GPU jobs, create or update scheduled queue-monitor heartbeats for timely refill, verify Slurm CPU/GRES allocation and pending reasons, and monitor job status with GPU counts."

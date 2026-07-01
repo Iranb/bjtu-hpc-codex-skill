@@ -1,4 +1,4 @@
 interface:
   display_name: "BJTU HPC"
   short_description: "Manage BJTU HPC auth, transfers, and GPU jobs"
-  default_prompt: "Use $bjtu-hpc to refresh auth, quickly summarize native queues across BJTU HPC accounts, manage the local dashboard, preflight native sbatch runability with packed CPU fallback down to emergency 4 CPUs and 2GPU-to-1GPU compatibility fallback, fill selected accounts with GPU jobs, monitor uploads, and fetch SSH/SFTP or environment details without exposing secrets."
+  default_prompt: "Use $bjtu-hpc to refresh auth, quickly summarize native queues across BJTU HPC accounts, manage the local dashboard, preflight native sbatch runability with ordinary 1GPU/6CPU shapes and 1GPU/4CPU resource-wait fallback, low-VRAM GPU-sharing when each child stays below 16GB, and 2GPU-to-1GPU compatibility fallback, fill selected accounts with GPU jobs, create or update scheduled queue-monitor heartbeats for timely refill, monitor uploads, and fetch SSH/SFTP or environment details."

@@ -1,10 +1,10 @@
 #!/bin/zsh
 set -euo pipefail
 
-LABEL="local.bjtu-hpc-menubar-monitor"
+LABEL="com.iranb.bjtu-hpc-menubar-monitor"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
-SLURM_DIR="${HPC_MONITOR_SLURM_DIR:-$(cd "$SOURCE_DIR/.." && pwd)}"
+SLURM_DIR="$(cd "$SOURCE_DIR/.." && pwd)"
 RUNTIME_DIR="$HOME/Library/BJTUHPCMonitor"
 RUNNER="$RUNTIME_DIR/run_hpc_menubar_monitor.sh"
 
@@ -46,6 +46,8 @@ cat > "$PLIST" <<PLIST
     <string>${HPC_MONITOR_MAX_INTERVAL:-600}</string>
     <key>HPC_MONITOR_TIMEOUT</key>
     <string>${HPC_MONITOR_TIMEOUT:-45}</string>
+    <key>HPC_MONITOR_ACCOUNT_CAP</key>
+    <string>${HPC_MONITOR_ACCOUNT_CAP:-4}</string>
     <key>HPC_MONITOR_PYTHON</key>
     <string>${HPC_MONITOR_PYTHON:-python3}</string>
     <key>HPC_MONITOR_SLURM_DIR</key>

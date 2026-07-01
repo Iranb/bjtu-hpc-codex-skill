@@ -1,367 +1,64 @@
 ---
 name: bjtu-hpc
-description: "BJTU HPC portal workflow for the local `slurm` workspace: refresh/save portal tokens, run the local Web dashboard, upload/download files, reuse existing datasets across accounts, preflight native sbatch runability, schedule packed GPU jobs to fill each saved account to its run-slot plus queued-backlog capacity, adapt packed 2GPU jobs through CPU fallback down to emergency 4 CPUs per child, split packed 2GPU jobs into native 1GPU compatibility jobs when 2GPU cannot schedule but 1GPU can run, inspect queues across accounts, get SSH/SFTP proxy info, monitor resumable dataset uploads, and collect runtime GPU/CPU details from cluster nodes. Use when working with the BJTU HPC portal, `hpc_*.py` scripts, `hpc_transfer_web.py`, or SLURM jobs on the cluster."
+description: "BJTU HPC portal workflow for the local `slurm` workspace: refresh/save portal tokens, run the local Web dashboard, upload/download files, reuse datasets across accounts, schedule native packed sbatch jobs only after pre-submit runability checks, use `hpc_queue_summary.py --json` or monitor snapshots to choose CPU/GPU shapes, default ordinary jobs to 1GPU/6CPU and fall back to 1GPU/4CPU only for direct-run/resource waits, use optional CPU-rich, wide, GPU-fill, low-VRAM GPU-sharing, or native 1GPU singleton fallbacks when allowed, fill selected accounts to their job cap with queued follow-ups, create/update scheduled queue-monitor heartbeats for status sync and timely refill, inspect CPU/GPU jobs, run native all-account queue summaries, get SSH/SFTP proxy info, monitor resumable uploads, and collect runtime GPU/CPU details."
 ---
 
 # BJTU HPC
 
-Use the scripts in this workspace as the canonical interface to the portal.
+Use the helper scripts in the local `slurm` workspace as the canonical interface to the BJTU HPC portal.
 
-## Workflow
+## Read First
 
-1. Refresh or save the portal token if `~/.bjtu_hpc_token` is missing or stale:
-   ```bash
-   python3 hpc_refresh_token.py --browser playwright --headless
-   ```
-   Use `--browser playwright` without `--headless` if a visible browser is needed. Set `HPC_LOGIN_PASSWORD` only when pre-filling CAS login fields for a one-off refresh.
+Policy authority and drift checks: treat live helper output (`hpc_doctor.py --json`, `hpc_accounts.py`, `hpc_queue_summary.py --json`, monitor/widget snapshots, and helper `--help` defaults) as authoritative over stale static prose when they conflict. Current validated scheduling policy is four non-terminal jobs per auth account: two run-slot jobs plus two queued follow-up jobs. Do not increase that cap, change queued-follow-up counts, or edit dashboard/planner/widget defaults without dated live verification. Before changing cap-related instructions or helper defaults, scan both `bjtu-hpc` and `bjtu-hpc-submit` for `--cap`, `HPC_MONITOR_ACCOUNT_CAP`, `run-slots`, `queued follow-up`, and `QOSMaxJobsPerUserLimit`, then update the paired skill text together.
 
-   If the user explicitly asks for a "captcha/verification-code only" login flow, save CAS login credentials with the local helper below. This stores only on the controller machine in `~/.bjtu_hpc_credentials.json` with file mode `0600`; never place passwords in skill files, AGENTS files, Git-tracked files, logs, or final answers.
-   ```bash
-   python3 hpc_credentials.py set NAME --login-name PORTAL_USER
-   python3 hpc_credentials.py list
-   ```
-   After this, `hpc_accounts.py refresh NAME --browser playwright` and `hpc_refresh_flow.py NAME --visible-only` will pre-fill the CAS username/password when the login form appears. The user should only enter the captcha/verification code, submit, wait for the HPC portal page to load, and close the Playwright window.
+For any live HPC or remote GPU work, start read-only unless the user explicitly asked to submit, cancel, delete, reserve, chmod, or otherwise mutate state.
 
-   Token refresh is not an experiment launch. If a user-requested BJTU status/progress check is blocked by `11009`, `11011`, `11012`, or HTTP `401`, immediately run the visible integrated refresh flow; do not ask whether to open Playwright. A "do not launch/start new experiments" request does not block token refresh. Only skip opening Playwright when the user explicitly says not to refresh the token, not to open a browser, or to rely on last-trusted status only.
+## Reference Index
 
-   For multiple portal accounts, use `hpc_accounts.py` as the source of truth instead of the legacy token file:
-   ```bash
-   python3 hpc_accounts.py list
-   python3 hpc_credentials.py list
-   python3 hpc_accounts.py add NAME --refresh --browser playwright --fresh-page --timeout 600
-   python3 hpc_accounts.py refresh NAME --browser playwright --headless --fresh-page
-   python3 hpc_accounts.py refresh NAME --browser playwright --headless --fresh-page --clear-existing-token
-   python3 hpc_accounts.py use NAME
-   ```
-   Adding or refreshing an account auto-discovers `portal_user`, `cluster`, and cluster OS `account` from the portal token when possible, so do not copy defaults from another account unless the user explicitly provides them. Do not pass `--sync-legacy-token` while adding a secondary account unless the user intentionally wants `~/.bjtu_hpc_token` to point at that account. Use `hpc_accounts.py use NAME` for an intentional default/legacy switch.
+Load only the reference files needed for the user's task:
 
-   For actual token renewal, prefer `--clear-existing-token` on Playwright refreshes. Without it, a saved profile may simply return the old usable `DESKTOP_PARA_ATOKEN` from portal localStorage and re-save it, which validates the token but does not prove a new OAuth/CAS token was issued. `--clear-existing-token` removes only the portal localStorage token from that account profile before waiting for a new token; it does not remove saved account tokens, CAS credentials, or account-store entries.
+- `references/auth_dashboard.md`: token refresh, saved accounts, CAS credential prefill, visible Playwright login, Web dashboard, Token Guardian, macOS widget token actions, dashboard LaunchAgent service, and SSH/SFTP proxy discovery.
+- `references/data_transfer.md`: portal upload/download, dataset root conventions, resumable archives, cross-account dataset reuse, ACL checks, account-local environments, and upload progress.
+- `references/gpu_scheduling.md`: native Slurm GPU submissions, account fill-to-cap behavior, resource planner usage, CPU/GPU fallback order, low-memory GPU sharing, wide/GPU-fill allocations, single-GPU compatibility, pending replacement, and queue-monitor refill policy. Read this before any evidence-producing GPU submit or resource-shape change.
+- `references/job_inspection.md`: portal API compatibility jobs, current queue summaries, pending reasons, native allocation checks, and runtime environment probes.
+- `references/guardrails.md`: credential, submit, dataset-sharing, upload, and scheduling safety guardrails. Read when changing policy or when an operation can mutate cluster or local state.
+- `references/hpc_workflow.md`: validated platform results and environment notes.
 
-   If a visible Playwright login window is opened, tell the user to finish CAS login, wait for the HPC portal page to load, and close the window. If the command appears stuck after the window is closed, exits with a visible-browser timeout, or the user says the browser windows were closed, first try reading the same profile headlessly:
-   ```bash
-   python3 hpc_accounts.py refresh NAME --browser playwright --headless --fresh-page --timeout 30 --sync-legacy-token
-   python3 hpc_accounts.py validate NAME
-   ```
-   Do not start a second visible login before probing the account profile; the login may already have persisted a usable token even when the visible helper timed out.
+## Core Commands
 
-   If token validation returns `11009`, `11011`, `11012`, HTTP `401`, or an auth transport error, the next action is always `hpc_refresh_flow.py NAME --visible-only` in a PTY. If the user says they can help refresh a token, do not ask again. Keep the command running while the user enters the captcha/verification code in the Playwright window. For multi-account checks, refresh each affected saved account unless the user scopes the request to one account.
+```bash
+python3 hpc_accounts.py list
+python3 hpc_queue_summary.py --details
+python3 hpc_queue_summary.py --json --jobs 4
+python3 hpc_plan_from_snapshot.py --planner-json
+python3 hpc_native_submit.py ./candidate.sbatch --auth-account NAME --expected-gpus N --expected-ntasks N --expected-cpus-per-task C
+python3 hpc_native_submit.py ./candidate.sbatch --auth-account NAME --expected-gpus N --expected-ntasks N --expected-cpus-per-task C --submit
+```
 
-2. For a local GUI, run the Web dashboard:
-   ```bash
-   python3 hpc_transfer_web.py
-   ```
-   Open `http://<host_ip>:8765/`. It can get/save tokens, save CAS login credentials, create upload tasks, launch resumable uploads, show upload progress, run the Token Guardian, and list portal jobs with GPU counts. It polls `/api/state` every 10 seconds and avoids overlapping refresh requests.
+Use `--auth-account NAME` for multi-account work. Prefer `hpc_queue_summary.py` for queue/resource snapshots because it queries native Slurm state through the portal SSH proxy and catches pending jobs that portal rows may omit.
 
-   Use the `Saved CAS Login` panel to save or delete local login credentials for captcha/verification-code-only refreshes. The panel writes through the same `hpc_account_store` helper used by `hpc_credentials.py`, stores credentials only on the controller machine in `~/.bjtu_hpc_credentials.json`, and keeps the file mode at `0600`. The dashboard must never display saved passwords; it only shows whether a password is present.
+## Scheduling Essentials
 
-   Use the `Token Guardian` panel to keep saved account tokens warm after an initial visible CAS login. It validates selected saved accounts on a schedule, attempts headless Playwright refresh with `--clear-existing-token` when a token is stale or invalid, uses a 5-day token-age warning as pre-expiry maintenance, syncs the default account back to the legacy token file, and marks accounts as needing visible login when the saved Playwright profile can no longer complete OAuth/CAS headlessly. A token-age warning is not proof that the token is invalid. The guardian must not display token values, passwords, or certificate tokens; it only records status summaries and redacted errors in `hpc_token_guardian.jsonl`.
+For evidence-producing GPU training, use native `sbatch` through the portal SSH proxy. Do not rely on the portal PyTorch-GPU app for CPU/GRES-sensitive training because it has produced wrong-shape `1CPU/1GPU` native allocations.
 
-   To keep the dashboard and Token Guardian running across terminal exits and user login sessions on macOS, install the per-user LaunchAgent:
-   ```bash
-   <PYTHON3> hpc_dashboard_service.py install
-   <PYTHON3> hpc_dashboard_service.py status
-   ```
-   The default service label is `com.example.bjtu-hpc-dashboard`, the plist is `~/Library/LaunchAgents/com.example.bjtu-hpc-dashboard.plist`, stdout is `/tmp/bjtu_hpc_transfer_web.out.log`, stderr is `/tmp/bjtu_hpc_transfer_web.err.log`, and the service starts `hpc_transfer_web.py --token-guardian --guardian-accounts all` on `<host_ip>:8765`. Use `hpc_dashboard_service.py stop`, `start`, `restart`, or `uninstall` to manage it. Prefer a LaunchAgent over a system LaunchDaemon so Playwright profiles, CAS cookies, and `~/.bjtu_hpc_*` files are accessed as the same macOS user.
+Before every real GPU training submission, read `references/gpu_scheduling.md`, generate or update the exact sbatch script, run local/remote syntax checks plus `sbatch --test-only`, submit only a passing candidate, then verify the real Slurm allocation with `scontrol`.
 
-3. Get SSH/SFTP proxy details when you need interactive access:
-   ```bash
-   python3 hpc_winscp_info.py
-   ```
-   Use the returned proxy host/port and temporary certificate token. Do not expect local SSH keys to work through the portal proxy.
+Default launch unit: one native packed Slurm job requesting `2GPU/12CPU` (`--ntasks=2 --cpus-per-task=6 --gres=gpu:2`) and running two independent one-GPU child experiments. Fill a selected auth account to four non-terminal jobs total when experiment pairs and submit limits allow it: two run-slot packed jobs plus two queued follow-up packed jobs.
 
-4. Upload or download files through the portal file manager:
-   ```bash
-   python3 hpc_upload.py ./path --remote-dir home
-   python3 hpc_download.py /data/home/<cluster_account_main>/result.json -o .
-   ```
+One-by-one submission rule: use one fresh snapshot-backed planner decision for exactly one new Slurm job. After any material submit, refresh queue/resources and rerun the planner before the next job.
 
-5. Manage HPC datasets under explicit, stable paths.
+Low-memory GPU-sharing rule: BJTU V100 nodes are `Tesla V100-PCIE-32GB`. If each child experiment has observed or strongly bounded peak VRAM below `16GB`, and the code is independent single-GPU code rather than true multi-GPU/DDP, a native packed/wide job may intentionally run two child processes on the same allocated GPU to improve utilization. Slurm GPU count remains the number of physical GPUs requested; child capacity may be up to `2 * requested_gpus`. Each physical GPU may host at most two code executions total, meaning one extra co-runner per allocated GPU. Do not stack more than two processes on one GPU, do not use this mode when VRAM is unknown or close to 16GB, and record `low-vram-gpu-share`, peak-VRAM evidence, child labels, requested GPU count, and per-GPU child mapping in launch notes.
 
-   Keep dataset roots separate from code, logs, outputs, and temporary upload fragments. For BJTU `cluster2`, use these conventions:
-   ```text
-   main cluster account:  /data/home/<cluster_account_main>
-   other cluster account: /data/home/<cluster_account_other>
-   canonical datasets:    /data/home/<account>/dataset/<dataset_name>
-   dataset manifests:     /data/home/<account>/dataset/_manifests/<dataset_name>_manifest.json
-   upload staging:        /data/home/<account>/dataset/_uploads/<dataset_name>/
-   archive staging:       /data/home/<account>/dataset/_archives/<dataset_name>/
-   other-account links:   /data/home/<other_account>/dataset/<dataset_name>  (symlink after access is verified)
-   code:                  /data/home/<account>/code/<project>
-   outputs:               /data/home/<account>/<project_keyword>-experiments/... or /data/home/<account>/autoresearch_projs/<project>/outputs
-   jobs/stdout:           /data/home/<account>/jobs
-   ```
+Use the monitor/widget resource snapshot and `hpc_resource_planner.py` to choose same-node CPU/GPU shapes. Ordinary evidence-producing jobs should first try `1GPU/6CPU` shapes (`2GPU/12CPU` packed pairs, `1GPU/6CPU` singletons, or wide `N GPU / 6N CPU`). Fall back to `1GPU/4CPU` shapes (`2GPU/8CPU`, `1GPU/4CPU`, or wide `--cpus-per-task=4`) only when exact-script `sbatch --test-only` cannot run directly or would wait because of `Resources`, reservation, same-node CPU pressure, or GPU/GRES shape pressure. CPU-rich `1:8`, `1:12`, or `1:16` shapes are optional only when the user asks for CPU-rich jobs or snapshot plus test-only proves immediate start without reducing GPU occupancy. Wider `3-8GPU` allocations, GPU-fill fragments down to `2` CPUs per GPU, 2GPU-to-1GPU compatibility splits, and low-memory GPU-sharing are explicit exceptions that require the conditions in `references/gpu_scheduling.md`.
 
-   For any new dataset upload, create a stable dataset name first, normally:
-   ```text
-   <dataset_family>_<split_or_source>_<version>
-   ```
-   Examples:
-   ```text
-   imagenet100_simgcd_seed0_v1
-   cub_ssb_default_v1
-   cars_ssb_default_v1
-   ```
-   Then use one canonical root and keep all temporary transfer artifacts outside that final root:
-   ```text
-   /data/home/<cluster_account_main>/dataset/<dataset_name>/          # final readable dataset root
-   /data/home/<cluster_account_main>/dataset/_uploads/<dataset_name>/ # resumable chunks, partial extracts, scratch
-   /data/home/<cluster_account_main>/dataset/_archives/<dataset_name>/# uploaded tar/zip archives and .part files
-   /data/home/<cluster_account_main>/dataset/_manifests/<dataset_name>_manifest.json
-   ```
-   Do not upload new datasets directly into `/data/home/<account>/jobs`, code directories, experiment output directories, `/tmp`, or an existing dataset root. Do not mix two different splits under the same `<dataset_name>`.
+## Auth Essentials
 
-   After extraction or sync, write a small manifest before using the dataset in training. At minimum include:
-   ```json
-   {
-     "dataset_name": "<dataset_name>",
-     "canonical_root": "/data/home/<cluster_account_main>/dataset/<dataset_name>",
-     "source": "<source server/path or archive>",
-     "created_at": "YYYY-MM-DD HH:MM CST",
-     "class_count_train": 0,
-     "file_count_train": 0,
-     "class_count_val": 0,
-     "file_count_val": 0,
-     "split_metadata": "<path or none>",
-     "notes": ""
-   }
-   ```
-   Training configs should point to the canonical root, not `_uploads`, `_archives`, or a temporary extraction directory. Once validation passes, `_uploads/<dataset_name>` may be cleaned only after confirming no transfer worker still needs it; never delete `.part` or chunk files for an active transfer.
+For saved accounts, use `hpc_accounts.py` as the source of truth instead of the legacy token file. If auth blocks a user-requested status/progress/upload/submit task with `11009`, `11011`, `11012`, HTTP `401`, or an auth transport error, run the integrated visible refresh flow for the affected account unless the user explicitly forbids browser/token refresh.
 
-   For <PROJECT> ImageNet-100 experiments, the current aligned dataset is:
-   ```text
-   canonical source on BJTU:
-     /data/home/<cluster_account_main>/dataset/<dataset_name>/<dataset_subdir>
+Use the Token Guardian panel only after an initial visible CAS login has created a usable account-local Playwright profile. It may validate saved accounts on a schedule, try headless profile refresh, warn on token age before expiry, sync the selected default account to the legacy token file, and mark accounts that need visible login. A token-age warning is maintenance signal, not proof that the token is invalid. Guardian logs and widget states must stay redacted.
 
-   optional target-account symlink:
-     /data/home/<cluster_account_other>/dataset/<dataset_name>/<dataset_subdir>
-     -> /data/home/<cluster_account_main>/dataset/<dataset_name>/<dataset_subdir>
-   ```
-   This is the SimGCD-aligned 100-class split. Expected validation counts are train `100` classes / `122115` files, val `100` classes / `5000` files, with `<split_metadata>.json` size `16747`.
+Never place portal tokens, cookies, passwords, temporary certificate tokens, or raw credential material in skill files, AGENTS files, Git-tracked files, logs, or final answers.
 
-   Do not use the legacy BJTU ImageNet root for aligned-split ImageNet-100 experiments:
-   ```text
-   /data/home/<cluster_account_main>/dataset/<legacy_dataset_name>/<dataset_subdir>
-   ```
-   That path has a different file count and lacks the SimGCD split metadata. Use it only for explicitly legacy jobs whose configs already document that choice.
+## Status Essentials
 
-6. Reuse existing cluster datasets across accounts instead of uploading another copy when possible.
-
-   The BJTU Web "file share" UI is not a reliable general-purpose way to expose an arbitrary existing dataset path to another cluster account. The observed frontend endpoints include:
-   ```text
-   GET  /pcp/clusters/{cluster}/file/share/list
-   POST /pcp/clusters/{cluster}/file/share
-   GET  /pcp/clusters/{cluster}/file/share/cancel?id=...
-   ```
-   In the 2026-05-30 test, both saved accounts returned an empty share list, and path-based share creation against an existing dataset returned 404, JSON decode, or backend DB errors. Treat this Web feature as portal-managed share metadata, not as the primary dataset reuse path.
-
-   Prefer cluster filesystem permissions. First inspect the source account, data root, and target cluster OS user:
-   ```bash
-   <PYTHON3> hpc_share_check.py \
-     --auth-account main \
-     --data-root /data/home/<cluster_account_main>/dataset/<dataset_name>/<dataset_subdir> \
-     --target-user <cluster_account_other>
-   ```
-
-   If the dataset subtree is already readable/executable by group or other users, and only the source home directory blocks traversal, grant the target user execute-only traversal on the source home directory. This does not grant directory listing of the source home:
-   ```bash
-   setfacl -m u:<cluster_account_other>:--x /data/home/<cluster_account_main>
-   ```
-
-   If the dataset subtree itself is not readable, use the `hpc_share_check.py` dry-run plan first and only add `--apply` after confirming the target user and data path. The apply mode grants read-only ACLs and can recurse through the dataset:
-   ```bash
-   <PYTHON3> hpc_share_check.py \
-     --auth-account main \
-     --data-root /path/to/source/dataset \
-     --target-user u22xxxxxx \
-     --apply
-   ```
-
-   Always verify as the target account before launching real training. A direct proxy SSH read test is sufficient for filesystem access; a small CPU job-side probe is better when queue time is acceptable. For the validated ImageNet-100 reuse case, `<cluster_account_other>` successfully read:
-   ```text
-   /data/home/<cluster_account_main>/dataset/<dataset_name>/<dataset_subdir>/<split_metadata>.json
-   /data/home/<cluster_account_main>/dataset/<dataset_name>/<dataset_subdir>/train/n01644373/n01644373_9643.JPEG
-   ```
-
-   For convenience, optionally create a symlink in the target account home after access is verified:
-   ```bash
-   mkdir -p /data/home/<cluster_account_other>/dataset
-   ln -sfn /data/home/<cluster_account_main>/dataset/<dataset_name> \
-     /data/home/<cluster_account_other>/dataset/<dataset_name>
-   ```
-   Use the real source and target cluster OS account names; do not assume portal usernames are the same as cluster OS usernames.
-
-7. Keep runtime environments account-local even when datasets are shared.
-
-   Do not launch a target account's jobs with another account's Python or conda environment path. For each cluster OS account, copy or rebuild the environment under that account's home, for example:
-   ```text
-   /data/home/<cluster_account_other>/envs/torch-cu118-py311
-   ```
-
-   When cloning an existing conda environment across accounts, run the clone as the target cluster OS user and force real file copies with `--copy`; plain `conda create --clone` may use hardlinks. Example validated on 2026-05-30:
-   ```bash
-   SRC=/data/home/<cluster_account_main>/envs/torch-cu118-py311
-   DST=/data/home/<cluster_account_other>/envs/torch-cu118-py311
-   CONDA=/data/home/<cluster_account_main>/software/miniconda3/bin/conda
-   mkdir -p /data/home/<cluster_account_other>/envs
-   "$CONDA" create --copy -y -p "$DST" --clone "$SRC"
-   ```
-
-   Verify the copied environment before using it:
-   ```bash
-   /data/home/<cluster_account_other>/envs/torch-cu118-py311/bin/python - <<'PY'
-   import os, sys, torch
-   print(sys.executable)
-   print(sys.prefix)
-   print(os.getuid())
-   print(torch.__version__, torch.version.cuda, torch.cuda.is_available())
-   PY
-   stat -c '%U:%G %i %n' \
-     /data/home/<cluster_account_main>/envs/torch-cu118-py311/bin/python3.11 \
-     /data/home/<cluster_account_other>/envs/torch-cu118-py311/bin/python3.11
-   ```
-   It is acceptable for `torch.cuda.is_available()` to be `False` on the login node; use a GPU job-side probe when CUDA runtime availability matters.
-
-8. Schedule GPU experiments with native packed Slurm jobs by default.
-
-   For evidence-producing GPU batches, the default launch unit is one native packed job running two independent single-GPU child experiments:
-   ```text
-   2GPU/32CPU: --ntasks=2 --cpus-per-task=16 --gres=gpu:2 --gres-flags=disable-binding
-   ```
-   Each child must receive exactly one Slurm-allocated GPU id from `CUDA_VISIBLE_DEVICES`. Do not hardcode physical GPU ids.
-
-   Treat each saved auth account as having two packed run-slot jobs plus two packed queued follow-up jobs:
-   ```text
-   per account: 2 run-slot packed jobs + 2 queued packed jobs
-   per packed job: 2 independent child experiments
-   default cap: 4 packed jobs = 8 child experiments per account
-   ```
-   Count `RUNNING`, `PENDING`, dependency-held, configuring, and other non-terminal packed jobs against the cap. Do not count terminal jobs such as `DONE`, `FAILED`, `CANCELLED`, `COMPLETED`, or `TIMEOUT`.
-
-   Before launching a batch, list accounts and check native queue state:
-   ```bash
-   python3 hpc_accounts.py list
-   python3 hpc_queue_summary.py --details
-   python3 hpc_jobs.py list --auth-account <account_name> --scope current --size 50 --paths
-   ```
-   Prefer `hpc_queue_summary.py` for current queue and running-slot questions because it queries native `squeue` across saved accounts and catches pending jobs that portal rows may omit.
-
-   Use the live `hpc_queue_summary.py --json` resource snapshot before choosing queued-job CPU/GPU parameters. A `2GPU` shape fits only when one non-reserved node has `gpu_free >= 2` and enough same-node CPU for the selected `cpus-per-task`; `1GPU` and GPU-fill fallbacks also require same-node CPU. If visible free GPUs exist only on nodes whose `cpu_free` is below every allowed fallback floor (`1GPU/4CPU`, emergency `2GPU/8CPU`, or GPU-fill `2` CPUs per GPU), record same-node CPU exhaustion and preserve existing queue position instead of canceling/replacing an already emergency `2GPU/8CPU` pending job.
-
-   Use this fill-to-cap algorithm for each selected account:
-   ```text
-   current = count non-terminal packed jobs for that auth account
-   open_slots = max(0, 4 - current)
-   experiment_pairs = floor(number of unlaunched child experiments / 2)
-   submit_now = min(open_slots, experiment_pairs)
-   ```
-   If `submit_now > 0`, submit that many native packed jobs before switching accounts. Do not stop after the first successful packed job while open slots remain, and do not submit a fifth non-terminal packed job unless the user explicitly overrides the cap.
-
-   Before every real GPU training submission, run a native pre-submit runability gate on the exact remote sbatch script. Test packed candidates in this order:
-   ```text
-   2GPU/32CPU: --ntasks=2 --cpus-per-task=16 --gres=gpu:2
-   2GPU/24CPU: --ntasks=2 --cpus-per-task=12 --gres=gpu:2
-   2GPU/16CPU: --ntasks=2 --cpus-per-task=8  --gres=gpu:2
-   2GPU/8CPU:  --ntasks=2 --cpus-per-task=4  --gres=gpu:2  (emergency only)
-   ```
-   Update both `#SBATCH --cpus-per-task` and child thread limits before each test. If `2GPU/16CPU` still cannot start directly because of `Resources`, reservation constraints, node CPU availability, or another resource-shape allocation failure, test emergency `2GPU/8CPU`. Do not use the emergency 4-CPU path for pure `Priority`, `QOSMaxJobsPerUserLimit`, dependency holds, node pins, or feature constraints. If the pending job is already emergency `2GPU/8CPU` and no same-node `1GPU/4CPU` or GPU-fill candidate fits, report same-node CPU exhaustion, `SchedNodeList`, `StartTime`, and `LastSchedEval` instead of canceling/replacing.
-
-   For one-by-one native submissions, run `hpc_resource_planner.py` before each job and follow only `next_action`. Pass `--available-children N` or `--child-manifest children.json` before allowing 3-8GPU candidates. Use `--test-only-probe --probe-script candidate.template.sbatch --write-selected-script candidate.selected.sbatch` when you need exact-script evidence; without `--probe-script`, planner probes are resource-shape-only and the final exact sbatch still needs preflight. When no same-node candidate fits, treat planner `queue_probe` output as backlog guidance, not an immediate submit recommendation. Do not submit high-CPU `2GPU/24CPU` or `2GPU/32CPU` jobs solely from a no-fit `queue_probe`; prefer lower history-supported backlog shapes such as `2GPU/8CPU` or `2GPU/16CPU` unless the user explicitly requests CPU-rich queued work.
-
-   For wide/GPU-fill allocations, generate a matching N-child native sbatch script first:
-   ```bash
-   hpc_native_sbatch_builder.py \
-     --job-name JOB_NAME --gpus N --cpus-per-task C \
-     --manifest children.json --output candidate.template.sbatch
-   hpc_resource_planner.py --available-children N \
-     --test-only-probe --probe-script candidate.template.sbatch \
-     --write-selected-script candidate.selected.sbatch
-   hpc_native_submit.py candidate.selected.sbatch --auth-account <account_name> \
-     --expected-gpus N --expected-ntasks N --expected-cpus-per-task C --submit
-   ```
-   The number of child commands must equal the requested GPU/task count. Do not request 3-8GPU unless the children are independent one-GPU experiments and the generated script launches one child per allocated GPU.
-
-   If the packed 2GPU shape still cannot be scheduled but a native 1GPU singleton can run and the child experiments are single-GPU capable, split the pair into native singleton jobs:
-   ```text
-   1GPU/8CPU: --ntasks=1 --cpus-per-task=8 --gres=gpu:1
-   1GPU/4CPU: --ntasks=1 --cpus-per-task=4 --gres=gpu:1  (emergency only)
-   ```
-   Use this 2GPU-to-1GPU fallback only when native evidence shows the packed 2GPU shape cannot be scheduled and 1GPU can run. Do not use it for pure `Priority`, `QOSMaxJobsPerUserLimit`, dependency holds, CPU-only pressure where emergency `2GPU/8CPU` can run, or true multi-GPU/DDP experiments that require two GPUs in one process. Count each singleton as one non-terminal launch unit.
-
-   Run `bash -n`, `sbatch --test-only`, real `sbatch`, and `scontrol show job <job_id>` verification for every submitted shape. Verify `NumCPUs`, `NumTasks`, `CPUs/Task`, and GPU TRES. If verification reports `NumCPUs=1` or `CPUs/Task=1` for a GPU training run, mark it wrong-shape immediately.
-
-   If the cluster QOS naturally keeps queued follow-ups pending until a slot frees, plain submission is sufficient. If strict refill ordering is required, submit queued follow-ups as native Slurm jobs with dependencies such as `--dependency=afterany:<job_id>`.
-
-   Keep each account's launch script, code path, output path, and runtime environment under that same cluster OS account's home. Shared datasets may use ACLs or target-home symlinks, but Python and conda paths must remain account-local.
-
-9. Submit jobs through the portal API only for CPU jobs, lightweight probes, uploads, downloads, or other resource-shape-noncritical tasks. Do not use portal API submission for GPU training. GPU training must use the native `sbatch` path above:
-   ```bash
-   python3 hpc_submit_verified.py ./script.py --auth-account main --app gpu --gpu 1 \
-     --ntasks 1 --cpus-per-task 16 --gres-flags disable-binding \
-     --submit --wait --job-name gpu-compat-probe
-   ```
-   Use `--auth-account NAME` for every multi-account run. Use `--app cpu` for CPU jobs and reserve `--app gpu` for compatibility probes only, not training. Do not trust portal payloads or portal rows alone for CPU/GRES correctness. `hpc_submit_verified.py` must perform native allocation verification against the Slurm job id, including the `wait.job` row when `--wait` is used. If a verified submit cannot find a Slurm job id or reports an allocation mismatch, mark the launch as failed for scheduling purposes even if the portal submit request returned success. A GPU training job observed as `NumCPUs=1`, `CPUs/Task=1`, `gres/gpu=1` is a wrong-shape launch and must be replaced with native `sbatch`; do not let it remain the primary evidence-producing run.
-
-10. Inspect jobs:
-   ```bash
-   python3 hpc_queue_summary.py --details
-   python3 hpc_queue_summary.py --accounts <account_a>,<account_b> --json
-   python3 hpc_jobs.py list --auth-account main
-   python3 hpc_jobs.py wait <job_name> --auth-account main
-   python3 hpc_jobs.py cancel <job_name> --auth-account main
-   ```
-   For current queue, account queue, running slot, or pending-reason requests, run `hpc_queue_summary.py --details` first and summarize `RUN`, `PD`, `OTHER`, `TOTAL`, `run_open`, `cap_open`, and pending reasons per account. Portal job rows include `ngpus`; display it when presenting job tables or dashboards, but do not treat portal rows as the source of truth for native queue occupancy.
-
-11. Probe runtime environment from inside the cluster:
-   ```bash
-   python3 hpc_submit.py gpu_env_probe.py --auth-account main --app gpu --gpu 1 \
-     --ntasks 1 --cpus-per-task 16 --gres-flags disable-binding \
-     --submit --wait --job-name gpu-inventory
-   ```
-   Use this for lightweight `nvidia-smi`, driver/CUDA version, GPU count, and CPU topology checks only. If the probe result must validate CPU/GRES allocation shape, use a native `sbatch` probe and `scontrol show job`, because the portal PyTorch-GPU app may drop `--cpus-per-task` and `--gres-flags` from the generated Slurm script.
-
-12. Check source-to-cluster dataset upload progress:
-   ```bash
-   python3 dataset_upload_progress.py
-   ```
-   Source is `<source_host>` (`<public_host>`) at `~/dataset/data`; destination is `/data/home/<cluster_account_main>/dataset/data`. Use `--watch 30` for repeated checks.
-   For the compressed missing-file archive, use:
-   ```bash
-   python3 dataset_upload_progress.py --archive <archive_name>.tar.gz
-   ```
-
-## Web Dashboard Notes
-
-- `hpc_transfer_web.py` uses `hpc_transfer_tasks.json` as its task config.
-- The `Portal Token` panel saves tokens to `~/.bjtu_hpc_token` from Playwright/Chrome/Safari, or from a manually pasted `DESKTOP_PARA_ATOKEN`.
-- The optional password field is only passed to the current `hpc_refresh_token.py` subprocess as `HPC_LOGIN_PASSWORD`; never persist it.
-- `Portal Jobs` is paged in the browser at 5 rows per page and should show the `GPU` column from `ngpus`.
-- For tasks with `total_bytes`, progress should prefer cluster-side SFTP stat of `<dest_path>.part`/`<dest_path>` instead of source-side state JSON. This avoids blocking on `<source_host>` SSH command execution when that server accepts auth but hangs after exec.
-- The current archive task `dataset-archive` uses `total_bytes=<bytes>` for `/data/home/<cluster_account_main>/dataset/data/_archives/<archive_name>.tar.gz`.
-
-## Guardrails
-
-- Use the token file `~/.bjtu_hpc_token`; never hardcode tokens or certificate values.
-- For multi-account work, treat `~/.bjtu_hpc_accounts.json` as the auth source of truth and `~/.bjtu_hpc_token` only as a legacy compatibility cache. Prefer `--auth-account NAME` on common commands.
-- For GPU training submissions, use native `sbatch` for all evidence-producing runs and force `--gres-flags disable-binding`. Default packed jobs should test `2GPU/32CPU`, then `2GPU/24CPU`, then `2GPU/16CPU` only when the live same-node snapshot supports those shapes; under no-fit or high-contention snapshots prefer history-supported `2GPU/8CPU` or `2GPU/16CPU` backlog over high-CPU queue probes. If `2GPU/16CPU` is still blocked by `Resources`, reservation constraints, node CPU availability, or another resource-shape allocation failure, test emergency `2GPU/8CPU` with 4 CPUs per child. If packed 2GPU still cannot schedule but 1GPU singleton preflight passes, split single-GPU-capable children into `1GPU/8CPU` singleton jobs with `1GPU/4CPU` as emergency fallback. If the job is already emergency `2GPU/8CPU` and visible GPUs have too little same-node CPU even for GPU-fill, preserve queue position and report same-node CPU exhaustion. Do not use 4-CPU or 1GPU fallback for pure `Priority`, `QOSMaxJobsPerUserLimit`, dependency holds, or true multi-GPU/DDP jobs. Do not rely on the portal PyTorch-GPU app to honor `--cpus-per-task` or `--gres-flags`; it has been observed to silently generate a Slurm script with only `1` CPU despite a multi-CPU portal payload. A direct portal-app `1CPU/1GPU` training allocation is forbidden for evidence-producing runs.
-- If a GPU training job is discovered with `NumCPUs=1`, `CPUs/Task=1`, and `gres/gpu=1`, classify it as wrong-shape immediately. Sync lightweight logs, record the failure/replacement lineage, and replace it using native `sbatch` with verified CPU/GRES allocation. Cancel the wrong-shape job only when it is the same experiment/run being replaced or the user explicitly authorizes cancellation; never cancel unrelated jobs.
-- Every GPU submit path that claims CPU/GRES correctness must run native verification using the real Slurm job id. In `--wait` flows, check both the immediate `job` row and `wait.job`; do not skip allocation verification just because the immediate portal row lacked a job id. If the MCP submit-and-verify wrapper has not been patched to read `wait.job`, perform a manual `scontrol show job <job_id>` verification before reporting success.
-- For experiment batches, cap each saved auth account at two run-slot packed jobs plus two queued packed follow-up jobs. Check native queue state per account before submitting, fill the two run slots first, then add at most two queued follow-ups, and do not submit a fifth non-terminal packed job under the same account unless the user explicitly overrides the cap.
-- Current generic scheduling policy: each valid saved account may carry two run-slot packed jobs plus two queued packed follow-ups, assuming resources and scheduler submit limits allow them.
-- If strict refill ordering is required, queue follow-up experiments with native Slurm dependencies such as `--dependency=afterany:<job_id>`; plain portal submissions may become runnable immediately if scheduler/QOS limits allow them.
-- If a per-account two-experiment launch hits `QOSMaxJobsPerUserLimit`, use a native two-experiment packed job with `--gres=gpu:2 --gres-flags=disable-binding` and start at `16` CPU cores per child experiment; fall back through `12` to a minimum of `8` per child only if the larger shapes are rejected. If the normal minimum still cannot schedule for resource-shape reasons, emergency `4` CPUs per child is allowed for packed jobs. Never pack more than two experiments per account without explicit user approval.
-- If queued follow-up submissions hit `QOSMaxSubmitJobPerUserLimit` or a similar submit cap, record them in the local launch plan and submit later when a slot clears rather than retrying in a loop.
-- Multi-account launches must keep account-local code, outputs, and environments under the corresponding cluster OS home. Shared datasets can cross accounts by ACL, but runtime paths should not cross accounts.
-- Prefer the portal proxy from `hpc_winscp_info.py` for SSH/SFTP.
-- Prefer a job-side probe over trying to infer GPU/CPU details from the login machine.
-- Before re-uploading a dataset for another account, first test whether the target cluster OS user can reuse the existing cluster path via Unix permissions or ACLs. Portal tokens and the Web file-share UI do not by themselves grant Slurm jobs read access to another account's files.
-- For cross-account dataset reuse, use the minimum permission that works: execute-only ACL on the source home directory when the dataset subtree is already readable, recursive read-only ACLs only when the subtree blocks reads.
-- After ACL changes, verify reads as the target cluster OS user and pass the shared absolute path or a target-home symlink into training configs; do not duplicate large datasets unless access cannot be made safe.
-- Datasets may be shared by ACL, but Python/conda runtime environments must live under the account that runs the job. Do not point `<cluster_account_other>` jobs at `/data/home/<cluster_account_main>/envs/...`; copy or rebuild the environment under `/data/home/<cluster_account_other>/envs/...`.
-- For conda environment copies, use `conda create --copy --clone` as the target cluster OS user and verify owner plus inode samples. Avoid default clone hardlinks when the intent is an account-local copy.
-- Use `dataset_upload_progress.py` before restarting dataset transfers; it detects completed files and active `.part` files by size.
-- For resumable archive uploads, treat cluster-side `.part` size as the progress source of truth when source-side state/log SSH reads hang.
-- Do not restart a resumable upload screen just because source-side state reads fail. First compare cluster-side `.part` size twice, 10-30 seconds apart, to determine whether bytes are still increasing.
-- For dataset transfer, do not assume OpenSSH `scp` works from the source server. It authenticated to `<proxy_host>:<proxy_port>` but exited with status `255`; source-side Paramiko/SFTP works through the same proxy.
-- Portal web upload API from `<source_host>` was tested with `hpc_upload.py`: `128MiB` took `512.874s`, about `0.25 MiB/s`. Do not treat the web upload API as a faster dataset-transfer path unless retested.
-- If upload or query APIs return auth errors, refresh the token once and retry.
-- Read `references/hpc_workflow.md` when you need validated platform results and current environment notes.
+For "current queue", "各账号队列", "running slots", or "pending reason" requests, run `hpc_queue_summary.py --details` first and summarize `RUN`, `PD`, `OTHER`, `TOTAL`, `run_open`, `cap_open`, and pending reasons per account. Use `hpc_pending_reason.py --auth-account NAME` only when deeper `scontrol` fields or node/reservation details are needed.

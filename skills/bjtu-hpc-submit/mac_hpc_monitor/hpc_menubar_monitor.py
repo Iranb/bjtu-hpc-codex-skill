@@ -34,6 +34,8 @@ from PyObjCTools import AppHelper
 DEFAULT_PYTHON = os.getenv("HPC_MONITOR_PYTHON", "python3")
 DEFAULT_SLURM_DIR = os.getenv("HPC_MONITOR_SLURM_DIR", str(Path(__file__).resolve().parents[1]))
 DEFAULT_DASHBOARD_URL = "http://127.0.0.1:8765/"
+DEFAULT_HISTORY_LOG_NAME = "hpc_resource_history.jsonl"
+DEFAULT_ACCOUNT_CAP = 4
 
 
 def env_int(name: str, default: int, minimum: int | None = None) -> int:
@@ -264,12 +266,31 @@ def format_reasons(reasons: dict[str, Any]) -> str:
     return ", ".join(f"{key} x{value}" for key, value in sorted(reasons.items()))
 
 
+def account_queue_priority(account: dict[str, Any]) -> int:
+    counts = account_counts(account)
+    if account_auth_error(account) or account.get("error"):
+        return 0
+    if counts["run_open"] > 0 or counts["cap_open"] > 0:
+        return 1
+    reasons = {
+        clean_reason(reason)
+        for reason in ((account.get("summary") or {}).get("pending_reasons") or {})
+    }
+    normal_cap_reasons = {"QOSMaxJobsPerUserLimit", "QOSMaxSubmitJobPerUserLimit"}
+    if reasons and not reasons.issubset(normal_cap_reasons):
+        return 2
+    if counts["running_resource_unknown"]:
+        return 2
+    return 3
+
+
 def sorted_accounts(accounts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(
         accounts,
         key=lambda account: (
-            0 if account.get("error") else 1,
-            0 if account_counts(account)["total"] else 1,
+            account_queue_priority(account),
+            -account_counts(account)["run_open"],
+            -account_counts(account)["cap_open"],
             -account_counts(account)["running"],
             -account_counts(account)["pending"],
             str(account.get("name") or ""),
@@ -419,7 +440,27 @@ def run_queue_summary(
     all_partitions: bool,
 ) -> tuple[dict[str, Any] | None, str | None, int]:
     script = str(Path(slurm_dir) / "hpc_queue_summary.py")
-    command = [python_path, script, "--json", "--timeout", str(timeout)]
+    account_cap = env_int("HPC_MONITOR_ACCOUNT_CAP", DEFAULT_ACCOUNT_CAP, minimum=1)
+    command = [
+        python_path,
+        script,
+        "--json",
+        "--timeout",
+        str(timeout),
+        "--cap",
+        str(account_cap),
+    ]
+    record_history = os.getenv("HPC_MONITOR_RECORD_HISTORY", "1").lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+    if record_history:
+        history_log = os.getenv("HPC_MONITOR_HISTORY_LOG") or str(
+            Path(slurm_dir) / "work" / DEFAULT_HISTORY_LOG_NAME
+        )
+        command.extend(["--history-log", history_log])
     if accounts:
         command.extend(["--accounts", accounts])
     if all_partitions:

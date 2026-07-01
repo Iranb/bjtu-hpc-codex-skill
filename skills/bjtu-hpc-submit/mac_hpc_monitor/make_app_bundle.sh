@@ -20,7 +20,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleDisplayName</key>
   <string>BJTU HPC Monitor</string>
   <key>CFBundleIdentifier</key>
-  <string>local.bjtu-hpc-menubar-monitor</string>
+  <string>com.iranb.bjtu-hpc-menubar-monitor</string>
   <key>CFBundleVersion</key>
   <string>1.0</string>
   <key>CFBundleShortVersionString</key>
