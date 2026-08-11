@@ -1,4 +1,4 @@
 interface:
   display_name: "BJTU HPC"
-  short_description: "Safely migrate accounts and run BJTU HPC tasks"
-  default_prompt: "Use $bjtu-hpc to configure a controller, migrate encrypted accounts, inspect queues, or run refresh-gated native Slurm tasks."
+  short_description: "Safely plan and run single or batch BJTU HPC tasks"
+  default_prompt: "Use $bjtu-hpc to inspect BJTU HPC or run prepared single or batch tasks through the refresh-gated submit cycle."

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autoreskill.local/schemas/hpc_data_artifact_registry.schema.json",
+  "title": "AutoResearch HPC Data Artifact Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "revision", "updated_at", "artifacts", "leases", "intents"],
+  "properties": {
+    "schema": {"const": "autoreskill.hpc_data_artifact_registry.v1"},
+    "revision": {"type": "integer", "minimum": 0},
+    "updated_at": {"type": ["string", "null"]},
+    "artifacts": {"type": "object", "additionalProperties": {"type": "object"}},
+    "leases": {"type": "object", "additionalProperties": {"type": "object"}},
+    "intents": {"type": "object", "additionalProperties": {"type": "object"}}
+  }
+}

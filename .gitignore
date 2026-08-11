@@ -1,6 +1,10 @@
 .DS_Store
 *.log
+# Runtime/private JSON state. Public schemas and sanitized component templates
+# under skills/ are explicitly allowed below.
 *.json
+!skills/**/references/*.json
+!skills/**/scripts/schemas/*.json
 *.token
 *.cookie
 *.pem
@@ -16,3 +20,15 @@ BJTUHPCMonitor/
 .bjtu_hpc_*
 *.encrypted.json
 *.passphrase
+hpc_transfer_tasks.json
+hpc_trace_ledger.json*
+*receipt*.json
+*intent*.json
+snapshot.json
+work/
+hpc_stdout/
+
+# Keep public contracts even when their names contain runtime words such as
+# receipt or intent.
+!skills/**/references/*.json
+!skills/**/scripts/schemas/*.json

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autoreskill.local/schemas/data_supply_contract.schema.json",
+  "title": "AutoResearch Project Data Supply Contract",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "mode", "dataset_id"],
+  "properties": {
+    "schema": {"const": "autoreskill.data_supply_contract.v1"},
+    "mode": {"enum": ["legacy", "external_hdf5_shadow", "external_hdf5_enforced"]},
+    "dataset_id": {"type": "string", "minLength": 1},
+    "artifact_schema": {"const": "image_bytes_indexed_v1"},
+    "dataset_semantics_sha256": {"$ref": "#/$defs/sha256"},
+    "source_inventory_sha256": {"$ref": "#/$defs/sha256"},
+    "artifact_build_contract_sha256": {"$ref": "#/$defs/sha256"},
+    "converter_bundle_sha256": {"$ref": "#/$defs/sha256"},
+    "artifact_content_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "consumer_contract_sha256": {"$ref": "#/$defs/sha256"},
+    "validator_bundle_sha256": {"$ref": "#/$defs/sha256"},
+    "validation_attestation_id": {"$ref": "#/$defs/nullableSha256"},
+    "validation_report_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "validation_attestation_ref": {"type": "string", "minLength": 1},
+    "validation_report_ref": {"type": "string", "minLength": 1},
+    "data_supply_contract_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullableSha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}
+  }
+}

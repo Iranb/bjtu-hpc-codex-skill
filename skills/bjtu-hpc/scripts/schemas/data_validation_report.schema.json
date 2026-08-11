@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autoreskill.local/schemas/data_validation_report.schema.json",
+  "title": "AutoResearch Successful Data Validation Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "artifact_schema",
+    "artifact_content_sha256",
+    "consumer_contract_sha256",
+    "validator_bundle_sha256",
+    "source_inventory_sha256",
+    "converter_bundle_sha256",
+    "sample_count",
+    "probe",
+    "errors",
+    "valid"
+  ],
+  "properties": {
+    "schema": {"const": "autoreskill.data_validation_report.v1"},
+    "artifact_schema": {"const": "image_bytes_indexed_v1"},
+    "artifact_content_sha256": {"$ref": "#/$defs/sha256"},
+    "consumer_contract_sha256": {"$ref": "#/$defs/sha256"},
+    "validator_bundle_sha256": {"$ref": "#/$defs/sha256"},
+    "source_inventory_sha256": {"$ref": "#/$defs/sha256"},
+    "converter_bundle_sha256": {"$ref": "#/$defs/sha256"},
+    "sample_count": {"type": "integer", "minimum": 1},
+    "probe": {"type": "object"},
+    "errors": {"const": []},
+    "valid": {"const": true}
+  },
+  "$defs": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+}
