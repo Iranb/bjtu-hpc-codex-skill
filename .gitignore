@@ -5,6 +5,7 @@
 *.json
 !skills/**/references/*.json
 !skills/**/scripts/schemas/*.json
+!skills/bjtu-hpc/assets/windows-widget/src/BjtuHpc.WidgetProvider/Templates/*.json
 *.token
 *.cookie
 *.pem

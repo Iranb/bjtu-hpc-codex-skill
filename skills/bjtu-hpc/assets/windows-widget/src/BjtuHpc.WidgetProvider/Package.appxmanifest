@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 com rescap">
+  <Identity Name="Iranb.BjtuHpcWindowsWidget" Publisher="CN=Iranb" Version="3.5.0.19" />
+  <Properties>
+    <DisplayName>BJTU HPC Windows Widget</DisplayName>
+    <PublisherDisplayName>Iranb</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources><Resource Language="x-generate" /></Resources>
+  <Applications>
+    <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
+      <uap:VisualElements DisplayName="BJTU HPC Widget" Description="Read-only HPC queue and cluster status"
+        BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="BjtuHpc.WidgetProvider.exe" Arguments="-RegisterProcessAsComServer" DisplayName="BJTU HPC Widget Provider">
+              <com:Class Id="A2F37C2E-7D64-4D09-9C5A-8F2B8191C642" DisplayName="BJTU HPC Widget Provider" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+        <uap3:Extension Category="windows.appExtension">
+          <uap3:AppExtension Name="com.microsoft.windows.widgets" DisplayName="BJTU HPC Widget" Id="iranb.bjtu.hpc.widget" PublicFolder="Public">
+            <uap3:Properties>
+              <WidgetProvider>
+                <ProviderIcons><Icon Path="ProviderAssets\HpcIcon.png" /></ProviderIcons>
+                <Activation><CreateInstance ClassId="A2F37C2E-7D64-4D09-9C5A-8F2B8191C642" /></Activation>
+                <Definitions>
+                  <Definition Id="BJTU_HPC_Status" DisplayName="BJTU HPC" Description="GPU, CPU, nodes, and account queue status" AllowMultiple="false" AdditionalInfoUri="https://github.com/Iranb/bjtu-hpc-codex-skill">
+                    <Capabilities><Capability><Size Name="small" /><Size Name="medium" /><Size Name="large" /></Capability></Capabilities>
+                    <ThemeResources>
+                      <Icons><Icon Path="ProviderAssets\HpcIcon.png" /></Icons>
+                      <Screenshots><Screenshot Path="ProviderAssets\HpcScreenshot.png" DisplayAltText="BJTU HPC status widget" /></Screenshots>
+                      <DarkMode>
+                        <Icons><Icon Path="ProviderAssets\HpcIcon.png" /></Icons>
+                        <Screenshots><Screenshot Path="ProviderAssets\HpcScreenshot.png" DisplayAltText="BJTU HPC status widget in dark mode" /></Screenshots>
+                      </DarkMode>
+                      <LightMode>
+                        <Icons><Icon Path="ProviderAssets\HpcIcon.png" /></Icons>
+                        <Screenshots><Screenshot Path="ProviderAssets\HpcScreenshot.png" DisplayAltText="BJTU HPC status widget in light mode" /></Screenshots>
+                      </LightMode>
+                    </ThemeResources>
+                  </Definition>
+                </Definitions>
+              </WidgetProvider>
+            </uap3:Properties>
+          </uap3:AppExtension>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities><rescap:Capability Name="runFullTrust" /></Capabilities>
+</Package>

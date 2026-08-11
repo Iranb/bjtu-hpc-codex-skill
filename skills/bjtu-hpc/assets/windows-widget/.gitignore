@@ -1,0 +1,10 @@
+bin/
+obj/
+artifacts/
+.vs/
+*.user
+*.pfx
+*.cer
+snapshot.json
+config.json
+app_packages/

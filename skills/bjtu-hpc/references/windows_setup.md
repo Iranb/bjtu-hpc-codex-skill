@@ -51,6 +51,10 @@ On Windows, `hpc_dashboard_service.py` installs a per-user Task Scheduler job th
 
 The default endpoint is `http://127.0.0.1:8765`. The task runs only for the signed-in user and uses the configured Python executable and script directory. On macOS the same helper continues to manage a LaunchAgent.
 
+## Windows Widget
+
+Read `windows_widget.md` before editing or installing the Windows widget. Run `scripts\resolve_windows_widget.py` and use only its selected canonical source under `assets\windows-widget`; do not reinstall from an older standalone copy. On Windows 10, install the WPF desktop host. The packaged provider may be built for compatibility, but requires the Windows 11 Widgets Board to run.
+
 ## Troubleshooting
 
 - If an account file is rejected, inspect its NTFS ACL and remove inherited or broad-principal access; do not weaken the check.
