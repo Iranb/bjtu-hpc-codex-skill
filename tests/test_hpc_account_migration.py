@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -19,9 +20,29 @@ from hpc_account_store import (
     upsert_account,
     upsert_account_credential,
 )
+from hpc_platform import assert_private_path, harden_private_path
 
 
 PASSPHRASE = "correct horse battery staple"
+
+
+def assert_private(path: Path) -> None:
+    assert_private_path(path, 0o600)
+
+
+def make_private(path: Path) -> None:
+    harden_private_path(path, 0o600)
+
+
+def make_loose(path: Path) -> None:
+    if os.name == "nt":
+        subprocess.run(
+            ["icacls.exe", str(path), "/grant", "*S-1-1-0:(R)"],
+            check=True,
+            capture_output=True,
+        )
+    else:
+        os.chmod(path, 0o644)
 
 
 def source_stores(root: Path) -> tuple[Path, Path]:
@@ -58,7 +79,7 @@ def test_metadata_only_round_trip_resets_profiles() -> None:
             accounts_path=source_accounts,
             credentials_path=source_credentials,
         )
-        assert os.stat(migration).st_mode & 0o777 == 0o600
+        assert_private(migration)
         assert result["includes_tokens"] is False
         assert result["includes_credentials"] is False
         payload = load_account_migration(migration)
@@ -109,8 +130,8 @@ def test_secret_round_trip_and_conflict_policies() -> None:
         credentials = load_credentials(target_credentials)
         assert target["accounts"]["main"]["token"] == "test-token-main"
         assert credentials["accounts"]["main"]["login_password"] == "test-password-main"
-        assert os.stat(target_accounts).st_mode & 0o777 == 0o600
-        assert os.stat(target_credentials).st_mode & 0o777 == 0o600
+        assert_private(target_accounts)
+        assert_private(target_credentials)
 
         try:
             import_account_migration(
@@ -148,7 +169,7 @@ def test_tamper_loose_permissions_and_symlink_are_rejected() -> None:
         payload = json.loads(migration.read_text())
         payload["accounts"]["main"]["portal_user"] = "tampered"
         migration.write_text(json.dumps(payload), encoding="utf-8")
-        os.chmod(migration, 0o600)
+        make_private(migration)
         try:
             load_account_migration(migration)
         except AccountStoreError as error:
@@ -164,15 +185,15 @@ def test_tamper_loose_permissions_and_symlink_are_rejected() -> None:
             accounts_path=source_accounts,
             credentials_path=source_credentials,
         )
-        os.chmod(migration, 0o644)
+        make_loose(migration)
         try:
             load_account_migration(migration, passphrase=PASSPHRASE)
         except AccountStoreError as error:
-            assert "readable by group/others" in str(error)
+            assert "readable by group/others" in str(error) or "loose NTFS ACL" in str(error)
         else:
             raise AssertionError("loosely permissioned migration must fail closed")
 
-        os.chmod(migration, 0o600)
+        make_private(migration)
         linked = root / "linked.json"
         linked.symlink_to(migration)
         try:
@@ -216,7 +237,7 @@ def test_wrong_passphrase_and_ciphertext_tamper_fail_before_import() -> None:
         ciphertext = envelope["ciphertext_b64"]
         envelope["ciphertext_b64"] = ("A" if ciphertext[0] != "A" else "B") + ciphertext[1:]
         migration.write_text(json.dumps(envelope), encoding="utf-8")
-        os.chmod(migration, 0o600)
+        make_private(migration)
         try:
             load_account_migration(migration, passphrase=PASSPHRASE)
         except AccountStoreError as error:

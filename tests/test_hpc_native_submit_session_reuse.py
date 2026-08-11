@@ -4,11 +4,14 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1] / "skills" / "bjtu-hpc" / "scripts"
 if str(ROOT) not in sys.path:
@@ -16,6 +19,7 @@ if str(ROOT) not in sys.path:
 
 import hpc_native_submit
 from hpc_core import native as native_core
+from hpc_platform import assert_private_path
 
 
 class FakeClient:
@@ -121,10 +125,12 @@ def test_submit_and_verification_share_one_client() -> None:
         receipt = json.loads(args.receipt_out.read_text())["submit_receipt"]
         assert receipt["script_or_command_sha256"] == receipt["remote_script_sha256"]
         assert receipt["submit_intent_sha256"] == hashlib.sha256(args.submit_intent.read_bytes()).hexdigest()
-        assert os.stat(args.receipt_out).st_mode & 0o777 == 0o600
+        assert_private_path(args.receipt_out, 0o600)
 
 
 def test_upload_command_preserves_exact_bytes() -> None:
+    if shutil.which("bash") is None:
+        pytest.skip("requires a local Bash interpreter")
     with tempfile.TemporaryDirectory() as directory:
         remote_path = Path(directory) / "candidate exact.sbatch"
         script_bytes = (
@@ -141,6 +147,8 @@ def test_upload_command_preserves_exact_bytes() -> None:
 
 
 def test_remote_drift_guard_blocks_preflight_and_submit() -> None:
+    if shutil.which("bash") is None:
+        pytest.skip("requires a local Bash interpreter")
     with tempfile.TemporaryDirectory() as directory:
         remote_path = Path(directory) / "candidate.sbatch"
         frozen_bytes = b"#!/usr/bin/env bash\necho frozen\n"

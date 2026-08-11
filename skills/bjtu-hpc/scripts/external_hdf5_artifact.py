@@ -8,7 +8,6 @@ connects to BJTU HPC and never embeds source host paths in portable artifacts.
 from __future__ import annotations
 
 import argparse
-import fcntl
 import hashlib
 import json
 import os
@@ -35,6 +34,7 @@ from hpc_core.data_artifacts import (
     sha256_file,
     validate_artifact_manifest,
 )
+from hpc_platform import exclusive_file_lock
 
 
 BUILD_CONTRACT_SCHEMA = "autoreskill.external_hdf5_build_contract.v1"
@@ -255,8 +255,7 @@ def build_artifact(contract_path: str | Path, inventory_path: str | Path, output
     building_root.mkdir(parents=True, exist_ok=True)
     work = building_root / build_key
     lock_path = building_root / f"{build_key}.lock"
-    with lock_path.open("a+", encoding="utf-8") as lock_handle:
-        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+    with lock_path.open("a+", encoding="utf-8") as lock_handle, exclusive_file_lock(lock_handle):
         work.mkdir(parents=True, exist_ok=True)
         state_path = work / "BUILD_STATE.json"
         if state_path.is_file():

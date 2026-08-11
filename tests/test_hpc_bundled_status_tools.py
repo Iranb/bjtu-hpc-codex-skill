@@ -79,6 +79,11 @@ class BundledStatusToolTests(unittest.TestCase):
         missing = [name for name in hpc_doctor.REQUIRED_SCRIPTS if not (root / name).is_file()]
         self.assertEqual(missing, [])
 
+    def test_requirements_keep_legacy_proxy_compatible_paramiko(self):
+        root = Path(hpc_doctor.__file__).resolve().parent
+        requirements = (root / "requirements.txt").read_text(encoding="utf-8").splitlines()
+        self.assertIn("paramiko>=3.4,<5", requirements)
+
 
 if __name__ == "__main__":
     unittest.main()

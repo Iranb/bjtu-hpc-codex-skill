@@ -29,9 +29,19 @@ def require_native_dependencies() -> None:
     """Validate the interpreter contract and SSH dependency used by native Slurm tools."""
     require_controller_python()
     try:
-        import paramiko  # noqa: F401
+        import paramiko
     except ModuleNotFoundError:
         _fail(
             "Python 3.12 is missing Paramiko. Install it with "
-            f"{CONTROLLER_PYTHON} -m pip install 'paramiko>=3.4'."
+            f"{CONTROLLER_PYTHON} -m pip install 'paramiko>=3.4,<5'."
+        )
+    try:
+        major = int(paramiko.__version__.split(".", 1)[0])
+    except (AttributeError, ValueError):
+        major = 0
+    if major >= 5:
+        _fail(
+            "BJTU's SSH proxy still requires the legacy ssh-rsa host-key algorithm, "
+            "which Paramiko 5 removed. Install a compatible release with "
+            f"{CONTROLLER_PYTHON} -m pip install 'paramiko>=3.4,<5'."
         )

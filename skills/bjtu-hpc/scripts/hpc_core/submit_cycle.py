@@ -6,7 +6,6 @@ state, and a durable submit receipt remains authoritative for backend acceptance
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import os
@@ -19,6 +18,13 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
 import jsonschema
+
+from hpc_platform import (
+    ensure_private_directory,
+    exclusive_file_lock,
+    harden_open_file,
+    harden_private_path,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,18 +88,21 @@ def file_sha256(path: Path) -> str:
 
 
 def atomic_write_json(path: Path, value: Any, *, mode: int = 0o600) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    os.chmod(path.parent, 0o700)
+    ensure_private_directory(path.parent)
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
     try:
-        os.fchmod(descriptor, mode)
+        try:
+            harden_open_file(descriptor, temporary, mode)
+        except Exception:
+            os.close(descriptor)
+            raise
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
-        os.chmod(path, mode)
+        harden_private_path(path, mode)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
@@ -321,19 +330,16 @@ class CycleJournal:
     @classmethod
     def create(cls, manifest: dict[str, Any], root: Path = DEFAULT_CYCLE_ROOT) -> "CycleJournal":
         root = root.expanduser().resolve()
-        root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.chmod(root, 0o700)
+        ensure_private_directory(root)
         journal = cls(root / str(manifest["cycle_id"]))
-        journal.cycle_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.chmod(journal.cycle_dir, 0o700)
+        ensure_private_directory(journal.cycle_dir)
         for directory in (
             journal.snapshots_dir,
             journal.plans_dir,
             journal.receipts_dir,
             journal.verifications_dir,
         ):
-            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-            os.chmod(directory, 0o700)
+            ensure_private_directory(directory)
         if journal.state_path.exists():
             state = journal.load()
             if state.get("manifest_sha256") != manifest["manifest_sha256"]:
@@ -390,7 +396,7 @@ class CycleJournal:
         self.events_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         descriptor = os.open(self.events_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         try:
-            os.fchmod(descriptor, 0o600)
+            harden_open_file(descriptor, self.events_path, 0o600)
             os.write(descriptor, (json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8"))
             os.fsync(descriptor)
         finally:
@@ -398,19 +404,16 @@ class CycleJournal:
 
     @contextmanager
     def lock(self):
-        descriptor = os.open(self.lock_path, os.O_WRONLY | os.O_CREAT, 0o600)
+        descriptor = os.open(self.lock_path, os.O_RDWR | os.O_CREAT, 0o600)
         try:
-            os.fchmod(descriptor, 0o600)
+            harden_open_file(descriptor, self.lock_path, 0o600)
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                with exclusive_file_lock(descriptor, blocking=False):
+                    yield
             except BlockingIOError as error:
                 raise CycleLockedError(f"cycle is already controlled by another process: {self.cycle_dir}") from error
-            yield
         finally:
-            try:
-                fcntl.flock(descriptor, fcntl.LOCK_UN)
-            finally:
-                os.close(descriptor)
+            os.close(descriptor)
 
     def snapshot_path(self, index: int, label: str) -> Path:
         return self.snapshots_dir / f"{index:03d}-{label}.json"

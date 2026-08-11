@@ -27,6 +27,12 @@ from hpc_account_store import (
     save_store,
     validate_account_name,
 )
+from hpc_platform import (
+    PlatformSecurityError,
+    assert_private_path,
+    harden_open_file,
+    harden_private_path,
+)
 
 
 MIGRATION_FORMAT = "bjtu-hpc-account-migration"
@@ -172,11 +178,10 @@ def _require_private_regular_file(path: Path) -> None:
         raise AccountStoreError(f"migration file not found: {path}") from error
     if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
         raise AccountStoreError(f"migration input must be a regular non-symlink file: {path}")
-    mode = stat.S_IMODE(metadata.st_mode)
-    if mode & 0o077:
-        raise AccountStoreError(
-            f"migration file is readable by group/others: {path} mode={mode:o}; run chmod 600 first"
-        )
+    try:
+        assert_private_path(path, 0o600)
+    except PlatformSecurityError as error:
+        raise AccountStoreError(str(error)) from error
     if metadata.st_size > MAX_MIGRATION_BYTES:
         raise AccountStoreError(
             f"migration file exceeds {MAX_MIGRATION_BYTES} bytes: {path}"
@@ -196,7 +201,7 @@ def _write_private_json(path: Path, payload: dict[str, Any], *, overwrite: bool)
     try:
         descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
         temporary = Path(temporary_name)
-        os.fchmod(descriptor, 0o600)
+        harden_open_file(descriptor, temporary, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             descriptor = None
             handle.write(data)
@@ -204,7 +209,7 @@ def _write_private_json(path: Path, payload: dict[str, Any], *, overwrite: bool)
             os.fsync(handle.fileno())
         os.replace(temporary, path)
         temporary = None
-        os.chmod(path, 0o600)
+        harden_private_path(path, 0o600)
     finally:
         if descriptor is not None:
             os.close(descriptor)

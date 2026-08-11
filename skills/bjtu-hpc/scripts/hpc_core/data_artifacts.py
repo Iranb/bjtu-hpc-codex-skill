@@ -6,7 +6,6 @@ contracts, but all identity and state transitions stay testable locally.
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import os
@@ -16,6 +15,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
+
+from hpc_platform import exclusive_file_lock, harden_open_file, harden_private_path
 
 
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -92,13 +93,18 @@ def atomic_write_json(path: str | Path, payload: Any, *, mode: int = 0o644) -> N
     target.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
     try:
+        try:
+            harden_open_file(fd, temp_name, mode)
+        except Exception:
+            os.close(fd)
+            raise
         with os.fdopen(fd, "wb") as handle:
             handle.write(canonical_json_bytes(payload))
             handle.write(b"\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.chmod(temp_name, mode)
         os.replace(temp_name, target)
+        harden_private_path(target, mode)
     finally:
         if os.path.exists(temp_name):
             os.unlink(temp_name)
@@ -302,11 +308,8 @@ class ArtifactRegistry:
     def locked(self) -> Iterator[None]:
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
         with self.lock_path.open("a+", encoding="utf-8") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            try:
+            with exclusive_file_lock(handle):
                 yield
-            finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     def read(self) -> dict[str, Any]:
         if not self.path.exists():

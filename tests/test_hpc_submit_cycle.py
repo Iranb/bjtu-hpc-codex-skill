@@ -21,6 +21,7 @@ from hpc_core.submit_cycle import (
     atomic_write_json,
     load_and_validate_manifest,
 )
+from hpc_platform import assert_private_path
 
 
 def sha(text: str) -> str:
@@ -54,7 +55,7 @@ def write_candidate(
     )
     script = root / f"{trace}.sbatch"
     script.write_text(script_text, encoding="utf-8")
-    script_digest = sha(script_text)
+    script_digest = hashlib.sha256(script.read_bytes()).hexdigest()
     intent = {
         "schema_version": 1,
         "submit_intent": {
@@ -268,9 +269,9 @@ def test_manifest_validation_and_permissions(tmp_path: Path) -> None:
     manifest = load_and_validate_manifest(manifest_path)
     journal = CycleJournal.create(manifest, tmp_path / "cycles")
     assert manifest["items"][0]["candidates"][0]["script_sha256"]
-    assert os.stat(journal.cycle_dir).st_mode & 0o777 == 0o700
-    assert os.stat(journal.state_path).st_mode & 0o777 == 0o600
-    assert os.stat(journal.events_path).st_mode & 0o777 == 0o600
+    assert_private_path(journal.cycle_dir, 0o700)
+    assert_private_path(journal.state_path, 0o600)
+    assert_private_path(journal.events_path, 0o600)
 
     with journal.lock():
         try:
@@ -384,7 +385,8 @@ def test_dry_run_then_three_item_submit_uses_n_plus_one_snapshots(tmp_path: Path
     assert result["call_counts"]["sbatch"] == 3
     assert result["call_counts"]["verification"] == 3
     assert len(list(journal.receipts_dir.glob("*.json"))) == 3
-    assert all(os.stat(path).st_mode & 0o777 == 0o600 for path in journal.receipts_dir.glob("*.json"))
+    for receipt_path in journal.receipts_dir.glob("*.json"):
+        assert_private_path(receipt_path, 0o600)
 
 
 def test_cycle_cap_leaves_remaining_items_unattempted(tmp_path: Path) -> None:
