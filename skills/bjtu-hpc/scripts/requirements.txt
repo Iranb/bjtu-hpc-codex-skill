@@ -1,0 +1,6 @@
+requests>=2.31
+paramiko>=3.4
+playwright>=1.44
+mcp>=1.2
+jsonschema>=4.20
+cryptography>=42

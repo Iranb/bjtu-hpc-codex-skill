@@ -17,10 +17,28 @@ The skills cover:
 ## Skills
 
 - `skills/bjtu-hpc/SKILL.md`: general BJTU HPC workflow and operational guardrails.
+- `skills/bjtu-hpc/scripts/`: portable account, credential, encrypted-migration, token-refresh, and identity-verification helpers with their Python requirements.
 - `skills/bjtu-hpc-submit/SKILL.md`: tool-first submit/status/auth workflow for agents.
 - `skills/bjtu-hpc-submit/mac_hpc_monitor/`: sanitized optional macOS monitor/widget scripts.
 - `skills/bjtu-hpc/references/`: split reference files for auth/dashboard, data transfer, GPU scheduling, inspection, guardrails, and validated platform notes.
 - `skills/bjtu-hpc/references/environment_setup.md`: Python 3.12 bootstrap and encrypted account migration/decryption.
+
+The bundled account tools are intentionally narrower than the private helper
+workspace. They include only the local import closure needed by
+`hpc_accounts.py` and `hpc_credentials.py`; portal identity checks use a
+read-only HTTP module and do not bundle the remote upload CLI.
+
+## Portable Account Tools
+
+```bash
+export HPC_PYTHON="<PYTHON3.12>"
+export HPC_ACCOUNT_TOOLS="$PWD/skills/bjtu-hpc/scripts"
+
+"$HPC_PYTHON" -m pip install -r "$HPC_ACCOUNT_TOOLS/requirements.txt"
+"$HPC_PYTHON" -m playwright install chromium
+"$HPC_PYTHON" "$HPC_ACCOUNT_TOOLS/hpc_accounts.py" list
+"$HPC_PYTHON" "$HPC_ACCOUNT_TOOLS/hpc_credentials.py" list
+```
 
 ## Sanitization
 

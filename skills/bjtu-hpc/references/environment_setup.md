@@ -5,12 +5,12 @@ Use this checklist on a new macOS controller. Secret-bearing migration JSON file
 ## Runtime
 
 ```bash
-export SLURM_DIR="<SLURM_DIR>"
 export HPC_PYTHON="<PYTHON3.12>"
-cd "$SLURM_DIR"
+export BJTU_HPC_REPO="<PATH_TO_CLONED_REPOSITORY>"
+export HPC_ACCOUNT_TOOLS="$BJTU_HPC_REPO/skills/bjtu-hpc/scripts"
 
 "$HPC_PYTHON" --version
-"$HPC_PYTHON" -m pip install -r requirements.txt
+"$HPC_PYTHON" -m pip install -r "$HPC_ACCOUNT_TOOLS/requirements.txt"
 "$HPC_PYTHON" -m playwright install chromium
 "$HPC_PYTHON" -c 'import requests, paramiko, playwright, mcp, jsonschema, cryptography; print("dependencies ok")'
 ```
@@ -22,13 +22,15 @@ Require Python 3.12 and `cryptography>=42`. Confirm `ssh`, `screen`, and `tar` a
 Metadata-only export contains no token or CAS password:
 
 ```bash
-"$HPC_PYTHON" hpc_accounts.py export-json <private-migration.json>
+"$HPC_PYTHON" "$HPC_ACCOUNT_TOOLS/hpc_accounts.py" \
+  export-json <private-migration.json>
 ```
 
 To migrate authentication, explicitly include the required secrets:
 
 ```bash
-"$HPC_PYTHON" hpc_accounts.py export-json <private-migration.json> \
+"$HPC_PYTHON" "$HPC_ACCOUNT_TOOLS/hpc_accounts.py" \
+  export-json <private-migration.json> \
   --include-tokens --include-credentials
 chmod 600 <private-migration.json>
 ```
@@ -41,7 +43,8 @@ Use repeated `--name NAME` options to export selected aliases. Use `--encrypt` t
 
 ```bash
 chmod 600 <private-migration.json>
-"$HPC_PYTHON" hpc_accounts.py import-json <private-migration.json> \
+"$HPC_PYTHON" "$HPC_ACCOUNT_TOOLS/hpc_accounts.py" \
+  import-json <private-migration.json> \
   --use-exported-default --sync-legacy-token
 ```
 
@@ -52,10 +55,16 @@ Default conflict policy is `error` and makes no changes. Inspect the target befo
 ## Validate And Clean Up
 
 ```bash
-"$HPC_PYTHON" hpc_accounts.py list
-"$HPC_PYTHON" hpc_credentials.py list
-"$HPC_PYTHON" hpc_accounts.py validate --all --json
-"$HPC_PYTHON" hpc_doctor.py --json
+"$HPC_PYTHON" "$HPC_ACCOUNT_TOOLS/hpc_accounts.py" list
+"$HPC_PYTHON" "$HPC_ACCOUNT_TOOLS/hpc_credentials.py" list
+"$HPC_PYTHON" "$HPC_ACCOUNT_TOOLS/hpc_accounts.py" validate --all --json
 ```
 
-Imported tokens may have expired. Refresh each invalid alias with `hpc_refresh_flow.py NAME --visible-only`, complete CAS/captcha in the isolated Playwright window, and validate again. After success, delete all migration copies and temporary passphrase files from both computers and transfer services.
+Imported tokens may have expired. Refresh each invalid alias with:
+
+```bash
+"$HPC_PYTHON" "$HPC_ACCOUNT_TOOLS/hpc_accounts.py" refresh NAME \
+  --browser playwright --fresh-page --clear-existing-token --clear-auth-session
+```
+
+Complete CAS/captcha in the isolated Playwright window and validate again. If the full private helper workspace is also installed, run its `hpc_doctor.py --json` afterward to validate the broader queue/SSH/Slurm toolchain. After success, delete all migration copies and temporary passphrase files from both computers and transfer services.
