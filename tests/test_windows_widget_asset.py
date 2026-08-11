@@ -66,3 +66,34 @@ def test_widget_manifest_matches_locked_package_version() -> None:
 
     assert identity is not None
     assert identity.get("Version") == "3.5.0.19"
+
+
+def test_desktop_installer_wires_live_redacted_snapshot_path() -> None:
+    installer = (WIDGET / "scripts" / "install-desktop.ps1").read_text(encoding="utf-8")
+    background = (WIDGET / "scripts" / "install-background.ps1").read_text(encoding="utf-8")
+
+    assert "install-background.ps1" in installer
+    assert "hpc_native_widget_snapshot.py" in background
+    assert "hpc_dashboard_service.py" in background
+    assert "BJTU HPC Widget Snapshot" in background
+    assert "Initial widget snapshot contains no accounts" in background
+    assert "--snapshot-path" in background
+
+
+def test_wpf_design_system_has_accessible_operations_contract() -> None:
+    main_window = (
+        WIDGET / "src" / "BjtuHpc.Desktop" / "MainWindow.xaml"
+    ).read_text(encoding="utf-8")
+    design_system = (
+        WIDGET / "src" / "BjtuHpc.Desktop" / "Themes" / "DesignSystem.xaml"
+    ).read_text(encoding="utf-8")
+    app_manifest = (
+        WIDGET / "src" / "BjtuHpc.Desktop" / "app.manifest"
+    ).read_text(encoding="utf-8")
+
+    assert "AutomationProperties.Name" in main_window
+    assert "WidgetCommands.Reload" in main_window
+    assert 'Value="{Binding GpuFree, Mode=OneWay}"' in main_window
+    assert "PrimaryButtonStyle" in design_system
+    assert "SurfaceCardStyle" in design_system
+    assert "PerMonitorV2" in app_manifest

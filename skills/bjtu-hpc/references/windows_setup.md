@@ -53,7 +53,7 @@ The default endpoint is `http://127.0.0.1:8765`. The task runs only for the sign
 
 ## Windows Widget
 
-Read `windows_widget.md` before editing or installing the Windows widget. Run `scripts\resolve_windows_widget.py` and use only its selected canonical source under `assets\windows-widget`; do not reinstall from an older standalone copy. On Windows 10, install the WPF desktop host. The packaged provider may be built for compatibility, but requires the Windows 11 Widgets Board to run.
+Read `windows_widget.md` before editing or installing the Windows widget. Run `scripts\resolve_windows_widget.py` and use only its selected canonical source under `assets\windows-widget`; do not reinstall from an older standalone copy. On Windows 10, install the WPF desktop host. Its installer must also install the dashboard service, create an initial redacted snapshot with at least one account, and register the `BJTU HPC Widget Snapshot` task. The packaged provider may be built for compatibility, but requires the Windows 11 Widgets Board to run.
 
 ## Troubleshooting
 

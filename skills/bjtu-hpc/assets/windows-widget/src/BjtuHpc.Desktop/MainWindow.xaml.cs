@@ -58,17 +58,55 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public ObservableCollection<AccountDisplay> VisibleAccounts { get; } = [];
     public ObservableCollection<NodeDisplay> VisibleNodes { get; } = [];
-    public int GpuFree { get => _gpuFree; private set => Set(ref _gpuFree, value); }
-    public int GpuTotal { get => _gpuTotal; private set { Set(ref _gpuTotal, value); OnPropertyChanged(nameof(GpuTotalSafe)); } }
+    public int GpuFree
+    {
+        get => _gpuFree;
+        private set
+        {
+            Set(ref _gpuFree, value);
+            OnPropertyChanged(nameof(GpuPercentText));
+        }
+    }
+    public int GpuTotal
+    {
+        get => _gpuTotal;
+        private set
+        {
+            Set(ref _gpuTotal, value);
+            OnPropertyChanged(nameof(GpuTotalSafe));
+            OnPropertyChanged(nameof(GpuPercentText));
+        }
+    }
     public int GpuTotalSafe => Math.Max(1, GpuTotal);
+    public string GpuPercentText => GpuTotal > 0
+        ? $"{Math.Round(GpuFree * 100d / GpuTotal):0}% free"
+        : "No capacity data";
     public int Running { get => _running; private set => Set(ref _running, value); }
     public int Pending { get => _pending; private set => Set(ref _pending, value); }
     public string CpuText => $"CPU  {_cpuFree} / {_cpuTotal}";
-    public string AccountText => $"Accounts {_allAccounts.Count} • Alert {_attention}";
+    public string CpuCapacityText => $"{_cpuFree} / {_cpuTotal}";
+    public string AccountText => $"{_allAccounts.Count} total  \u00B7  {_attention} attention";
+    public string HealthLabel => HasError ? "OFFLINE" : IsStale ? "STALE" : _attention > 0 ? "ATTENTION" : "HEALTHY";
     public string StatusText { get => _statusText; private set => Set(ref _statusText, value); }
     public string UpdatedText { get => _updatedText; private set => Set(ref _updatedText, value); }
-    public bool IsStale { get => _isStale; private set => Set(ref _isStale, value); }
-    public bool HasError { get => _hasError; private set => Set(ref _hasError, value); }
+    public bool IsStale
+    {
+        get => _isStale;
+        private set
+        {
+            Set(ref _isStale, value);
+            OnPropertyChanged(nameof(HealthLabel));
+        }
+    }
+    public bool HasError
+    {
+        get => _hasError;
+        private set
+        {
+            Set(ref _hasError, value);
+            OnPropertyChanged(nameof(HealthLabel));
+        }
+    }
     public string PageText => _allAccounts.Count == 0 ? "0 / 0" : $"{_page + 1} / {PageCount}";
     private int PageCount => Math.Max(1, (int)Math.Ceiling(_allAccounts.Count / (double)AccountsPerPage));
 
@@ -107,13 +145,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         UpdatePage();
         IsStale = model.IsStale;
         StatusText = model.IsStale
-            ? "STALE • Last trusted snapshot is older than 3 minutes."
+            ? "STALE \u00B7 Last trusted snapshot is older than 3 minutes."
             : model.AttentionCount > 0
-                ? $"ATTENTION • {model.AttentionCount} account(s) need login or review."
-                : "OK • Snapshot is current and all accounts are healthy.";
+                ? $"ATTENTION \u00B7 {model.AttentionCount} account(s) need login or review."
+                : "HEALTHY \u00B7 Snapshot is current and all accounts are ready.";
         UpdatedText = "Updated " + model.UpdatedLabel;
         OnPropertyChanged(nameof(CpuText));
+        OnPropertyChanged(nameof(CpuCapacityText));
         OnPropertyChanged(nameof(AccountText));
+        OnPropertyChanged(nameof(HealthLabel));
     }
 
     private void UpdatePage()
@@ -146,13 +186,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private async void Refresh_Click(object sender, RoutedEventArgs e) => await ReloadAsync();
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
-    private void Pin_Click(object sender, RoutedEventArgs e)
+    private async void ReloadCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+    {
+        await ReloadAsync();
+        e.Handled = true;
+    }
+
+    private void CloseCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+    {
+        Close();
+        e.Handled = true;
+    }
+
+    private void TogglePinCommand_Executed(object sender, ExecutedRoutedEventArgs e)
     {
         Topmost = !Topmost;
         PinButton.Opacity = Topmost ? 1 : 0.45;
         SaveConfig();
+        e.Handled = true;
     }
     private void PreviousPage_Click(object sender, RoutedEventArgs e)
     {
@@ -164,10 +215,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _page = (_page + 1) % PageCount;
         UpdatePage();
     }
-    private void Dashboard_Click(object sender, RoutedEventArgs e) => OpenUrl("http://127.0.0.1:8765/");
+    private void DashboardCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+    {
+        OpenUrl("http://127.0.0.1:8765/");
+        e.Handled = true;
+    }
 
-    private async void RefreshAllTokens_Click(object sender, RoutedEventArgs e) =>
+    private async void RefreshTokensCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+    {
         await RequestVisibleRefreshAsync(new { accounts = "all" }, "all saved accounts");
+        e.Handled = true;
+    }
 
     private async void Login_Click(object sender, RoutedEventArgs e)
     {

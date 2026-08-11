@@ -25,7 +25,9 @@
     ],
     "src/BjtuHpc.Desktop/MainWindow.xaml": [
       "Refresh all tokens",
-      "3.5 / build 19"
+      "v3.5.19",
+      "AutomationProperties.Name",
+      "WidgetCommands.Reload"
     ],
     "src/BjtuHpc.Desktop/MainWindow.xaml.cs": [
       "accounts = \"all\"",
@@ -40,6 +42,20 @@
       "$host.widgetSize",
       "refreshAllTokens",
       "refreshAccount"
+    ],
+    "src/BjtuHpc.Desktop/Themes/DesignSystem.xaml": [
+      "Soft UI",
+      "PrimaryButtonStyle",
+      "SurfaceCardStyle"
+    ],
+    "src/BjtuHpc.Desktop/app.manifest": [
+      "PerMonitorV2"
+    ],
+    "scripts/install-background.ps1": [
+      "hpc_native_widget_snapshot.py",
+      "hpc_dashboard_service.py",
+      "BJTU HPC Widget Snapshot",
+      "Initial widget snapshot contains no accounts"
     ]
   }
 }

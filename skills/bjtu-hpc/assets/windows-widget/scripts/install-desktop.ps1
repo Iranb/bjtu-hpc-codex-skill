@@ -1,7 +1,9 @@
 param(
     [switch]$EnableStartup,
     [switch]$DemoSnapshot,
-    [switch]$NoLaunch
+    [switch]$NoLaunch,
+    [switch]$NoBackground,
+    [string]$PythonPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,7 +45,10 @@ if ($EnableStartup) {
 }
 
 if ($DemoSnapshot) {
-    & $env:HPC_PYTHON (Join-Path $ProjectRoot 'tools\snapshot_bridge.py') --demo
+    $effectivePython = if ($PythonPath) { $PythonPath } elseif ($env:HPC_PYTHON) { $env:HPC_PYTHON } else { (Get-Command python -ErrorAction Stop).Source }
+    & $effectivePython (Join-Path $ProjectRoot 'tools\snapshot_bridge.py') --demo
+} elseif (-not $NoBackground) {
+    & (Join-Path $PSScriptRoot 'install-background.ps1') -PythonPath $PythonPath
 }
 
 if (-not $NoLaunch) {

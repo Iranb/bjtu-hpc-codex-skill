@@ -7,6 +7,7 @@ if ((Split-Path -Leaf $ResolvedInstallRoot) -ne 'BJTUHPCWidget' -or
     throw "Refusing to uninstall unexpected path: $ResolvedInstallRoot"
 }
 $InstalledExe = Join-Path $ResolvedInstallRoot 'BjtuHpc.Desktop.exe'
+$SnapshotTaskName = 'BJTU HPC Widget Snapshot'
 $Shortcuts = @(
     (Join-Path ([Environment]::GetFolderPath('Desktop')) 'BJTU HPC Widget.lnk'),
     (Join-Path ([Environment]::GetFolderPath('Startup')) 'BJTU HPC Widget.lnk')
@@ -20,5 +21,8 @@ foreach ($Shortcut in $Shortcuts) {
 }
 if (Test-Path -LiteralPath $ResolvedInstallRoot) {
     Remove-Item -LiteralPath $ResolvedInstallRoot -Recurse
+}
+if (Get-ScheduledTask -TaskName $SnapshotTaskName -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $SnapshotTaskName -Confirm:$false
 }
 Write-Output 'BJTU HPC desktop widget uninstalled. Redacted snapshots and window preferences were preserved.'
