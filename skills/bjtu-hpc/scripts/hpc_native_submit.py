@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from hpc_runtime import require_native_dependencies
+from hpc_platform import ensure_private_directory, harden_open_file, harden_private_path
 
 require_native_dependencies()
 
@@ -55,17 +56,21 @@ def strict_json(path: Path) -> dict[str, Any]:
 
 
 def atomic_write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_private_directory(path.parent)
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
     try:
+        try:
+            harden_open_file(descriptor, temporary, 0o600)
+        except Exception:
+            os.close(descriptor)
+            raise
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(value, handle, indent=2, ensure_ascii=False, sort_keys=True, allow_nan=False)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.chmod(temporary, 0o600)
         os.replace(temporary, path)
-        os.chmod(path, 0o600)
+        harden_private_path(path, 0o600)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)

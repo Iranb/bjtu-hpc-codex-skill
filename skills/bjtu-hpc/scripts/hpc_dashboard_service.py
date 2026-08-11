@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install and manage the BJTU HPC dashboard as a macOS LaunchAgent."""
+"""Install and manage the BJTU HPC dashboard as a per-user background service."""
 
 import argparse
 import json
@@ -14,6 +14,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
+IS_WINDOWS = os.name == "nt"
 DEFAULT_LABEL = os.getenv("HPC_DASHBOARD_LABEL", "com.example.bjtu-hpc-dashboard")
 DEFAULT_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{DEFAULT_LABEL}.plist"
 DEFAULT_PYTHON = Path(os.getenv("HPC_DASHBOARD_PYTHON", sys.executable)).expanduser()
@@ -42,6 +43,91 @@ def run_launchctl(args: list[str], *, check: bool = False) -> subprocess.Complet
         text=True,
         check=check,
     )
+
+
+def run_powershell(script: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    merged = os.environ.copy()
+    if env:
+        merged.update(env)
+    return subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=merged,
+        check=False,
+    )
+
+
+def windows_task_env(args) -> dict[str, str]:
+    command = dashboard_args(args)
+    return {
+        "BJTU_HPC_TASK_NAME": args.label,
+        "BJTU_HPC_TASK_EXECUTE": command[0],
+        "BJTU_HPC_TASK_ARGUMENTS": subprocess.list2cmdline(command[1:]),
+        "BJTU_HPC_TASK_WORKDIR": str(ROOT),
+    }
+
+
+def windows_install(args) -> int:
+    script = r"""
+$ErrorActionPreference = 'Stop'
+$action = New-ScheduledTaskAction -Execute $env:BJTU_HPC_TASK_EXECUTE -Argument $env:BJTU_HPC_TASK_ARGUMENTS -WorkingDirectory $env:BJTU_HPC_TASK_WORKDIR
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
+Register-ScheduledTask -TaskName $env:BJTU_HPC_TASK_NAME -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+Start-ScheduledTask -TaskName $env:BJTU_HPC_TASK_NAME
+"""
+    result = run_powershell(script, windows_task_env(args))
+    if result.returncode != 0:
+        print(redact_launchctl_status(result.stderr.strip() or result.stdout.strip()), file=sys.stderr)
+        return result.returncode
+    print(f"[ok] installed and started Windows task {args.label}")
+    return 0
+
+
+def windows_uninstall(args) -> int:
+    script = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+Stop-ScheduledTask -TaskName $env:BJTU_HPC_TASK_NAME
+Unregister-ScheduledTask -TaskName $env:BJTU_HPC_TASK_NAME -Confirm:$false
+"""
+    result = run_powershell(script, {"BJTU_HPC_TASK_NAME": args.label})
+    if result.returncode != 0:
+        print(redact_launchctl_status(result.stderr.strip() or result.stdout.strip()), file=sys.stderr)
+        return result.returncode
+    print(f"[ok] removed Windows task {args.label}")
+    return 0
+
+
+def windows_control(args, command: str) -> int:
+    verb = {"start": "Start-ScheduledTask", "stop": "Stop-ScheduledTask"}[command]
+    script = f"$ErrorActionPreference = 'Stop'; {verb} -TaskName $env:BJTU_HPC_TASK_NAME"
+    result = run_powershell(script, {"BJTU_HPC_TASK_NAME": args.label})
+    if result.returncode != 0:
+        print(redact_launchctl_status(result.stderr.strip() or result.stdout.strip()), file=sys.stderr)
+        return result.returncode
+    past_tense = {"start": "started", "stop": "stopped"}[command]
+    print(f"[ok] {past_tense} Windows task {args.label}")
+    return 0
+
+
+def windows_status(args) -> int:
+    script = r"""
+$ErrorActionPreference = 'Stop'
+$task = Get-ScheduledTask -TaskName $env:BJTU_HPC_TASK_NAME
+[pscustomobject]@{ task = $task.TaskName; state = [string]$task.State } | ConvertTo-Json -Compress
+"""
+    result = run_powershell(script, {"BJTU_HPC_TASK_NAME": args.label})
+    if result.returncode == 0:
+        print(redact_launchctl_status(result.stdout.strip()))
+    else:
+        print(redact_launchctl_status(result.stderr.strip() or result.stdout.strip()), file=sys.stderr)
+    dashboard_status_probe(args)
+    return result.returncode
 
 
 def redact_launchctl_status(text: str) -> str:
@@ -147,6 +233,8 @@ def kickstart(args) -> int:
 
 
 def install(args) -> int:
+    if IS_WINDOWS:
+        return windows_install(args)
     write_plist(args)
     bootout(args)
     code = bootstrap(args)
@@ -156,6 +244,8 @@ def install(args) -> int:
 
 
 def uninstall(args) -> int:
+    if IS_WINDOWS:
+        return windows_uninstall(args)
     bootout(args)
     if args.plist.exists():
         args.plist.unlink()
@@ -164,6 +254,8 @@ def uninstall(args) -> int:
 
 
 def start(args) -> int:
+    if IS_WINDOWS:
+        return windows_control(args, "start")
     if not args.plist.exists():
         write_plist(args)
     if not is_loaded(args):
@@ -174,18 +266,14 @@ def start(args) -> int:
 
 
 def stop(args) -> int:
+    if IS_WINDOWS:
+        return windows_control(args, "stop")
     bootout(args)
     print(f"[ok] stopped {args.label}")
     return 0
 
 
-def print_status(args) -> int:
-    result = run_launchctl(["print", service_target(args.label)])
-    if result.returncode == 0:
-        print(redact_launchctl_status(result.stdout).strip())
-    else:
-        print(redact_launchctl_status(result.stderr.strip() or result.stdout.strip()), file=sys.stderr)
-
+def dashboard_status_probe(args) -> None:
     url = f"http://{args.host}:{args.port}/api/token-guardian/status"
     try:
         with urllib.request.urlopen(url, timeout=3) as response:
@@ -200,6 +288,17 @@ def print_status(args) -> int:
         )
     except (OSError, urllib.error.URLError, json.JSONDecodeError) as error:
         print(f"[dashboard] status probe failed: {error}", file=sys.stderr)
+
+
+def print_status(args) -> int:
+    if IS_WINDOWS:
+        return windows_status(args)
+    result = run_launchctl(["print", service_target(args.label)])
+    if result.returncode == 0:
+        print(redact_launchctl_status(result.stdout).strip())
+    else:
+        print(redact_launchctl_status(result.stderr.strip() or result.stdout.strip()), file=sys.stderr)
+    dashboard_status_probe(args)
     return 0 if result.returncode == 0 else result.returncode
 
 
@@ -209,7 +308,7 @@ def show_plist(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Manage the BJTU HPC dashboard LaunchAgent.")
+    parser = argparse.ArgumentParser(description="Manage the BJTU HPC dashboard background service.")
     parser.add_argument("command", choices=["install", "uninstall", "start", "stop", "restart", "status", "plist"])
     parser.add_argument("--label", default=DEFAULT_LABEL)
     parser.add_argument("--plist", type=Path, default=DEFAULT_PLIST)
@@ -244,6 +343,9 @@ def main() -> int:
     if args.command == "stop":
         return stop(args)
     if args.command == "restart":
+        if IS_WINDOWS:
+            code = windows_control(args, "stop")
+            return code if code != 0 else windows_control(args, "start")
         write_plist(args)
         bootout(args)
         code = bootstrap(args)

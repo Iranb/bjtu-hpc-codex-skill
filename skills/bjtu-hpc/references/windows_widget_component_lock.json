@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-08-11",
+  "component": "bjtu-hpc-windows-widget",
+  "contract_authority": "references/apple_native_widget_component_lock.json",
+  "short_version": "3.5",
+  "build_version": "19",
+  "package_version": "3.5.0.19",
+  "canonical_source_root": "assets/windows-widget",
+  "desktop_project": "src/BjtuHpc.Desktop/BjtuHpc.Desktop.csproj",
+  "provider_project": "src/BjtuHpc.WidgetProvider/BjtuHpc.WidgetProvider.csproj",
+  "package_manifest": "src/BjtuHpc.WidgetProvider/Package.appxmanifest",
+  "template": "src/BjtuHpc.WidgetProvider/Templates/HpcWidgetTemplate.json",
+  "required_source_markers": {
+    "Directory.Build.props": [
+      "<AssemblyVersion>3.5.0.19</AssemblyVersion>",
+      "<InformationalVersion>3.5-build19</InformationalVersion>"
+    ],
+    "src/BjtuHpc.Widget.Core/WidgetGeneration.cs": [
+      "ShortVersion = \"3.5\"",
+      "BuildVersion = \"19\""
+    ],
+    "src/BjtuHpc.Widget.Core/SnapshotPresentation.cs": [
+      "ResolveAvailable"
+    ],
+    "src/BjtuHpc.Desktop/MainWindow.xaml": [
+      "Refresh all tokens",
+      "v3.5.19",
+      "AutomationProperties.Name",
+      "WidgetCommands.Reload"
+    ],
+    "src/BjtuHpc.Desktop/MainWindow.xaml.cs": [
+      "accounts = \"all\"",
+      "api/token-guardian/visible-refresh"
+    ],
+    "src/BjtuHpc.WidgetProvider/HpcWidget.cs": [
+      "refreshAllTokens",
+      "refreshAccount",
+      "api/token-guardian/visible-refresh"
+    ],
+    "src/BjtuHpc.WidgetProvider/Templates/HpcWidgetTemplate.json": [
+      "$host.widgetSize",
+      "refreshAllTokens",
+      "refreshAccount"
+    ],
+    "src/BjtuHpc.Desktop/Themes/DesignSystem.xaml": [
+      "Soft UI",
+      "PrimaryButtonStyle",
+      "SurfaceCardStyle"
+    ],
+    "src/BjtuHpc.Desktop/app.manifest": [
+      "PerMonitorV2"
+    ],
+    "scripts/install-background.ps1": [
+      "hpc_native_widget_snapshot.py",
+      "hpc_dashboard_service.py",
+      "BJTU HPC Widget Snapshot",
+      "Initial widget snapshot contains no accounts"
+    ]
+  }
+}

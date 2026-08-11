@@ -13,6 +13,8 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
+from hpc_platform import harden_open_file, harden_private_path
+
 from hpc_runtime import require_controller_python
 
 require_controller_python()
@@ -532,9 +534,14 @@ def write_token(path, token):
     path = path.expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        harden_open_file(fd, path, 0o600)
+    except Exception:
+        os.close(fd)
+        raise
     with os.fdopen(fd, "w", encoding="utf-8") as file:
         file.write(token.strip() + "\n")
-    os.chmod(path, 0o600)
+    harden_private_path(path, 0o600)
 
 
 def validate_token(token, timeout):

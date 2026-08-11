@@ -57,7 +57,7 @@ PYTHON_MODULES = [
     "numpy",
     "PIL",
 ]
-COMMANDS = ["ssh", "screen", "tar"]
+COMMANDS = ["ssh", "tar"] if os.name == "nt" else ["ssh", "screen", "tar"]
 
 
 def ok_item(**extra: Any) -> dict[str, Any]:
@@ -70,7 +70,23 @@ def fail_item(message: str, **extra: Any) -> dict[str, Any]:
 
 def module_check(name: str) -> dict[str, Any]:
     spec = importlib.util.find_spec(name)
-    return ok_item(origin=spec.origin) if spec else fail_item("module not importable")
+    if not spec:
+        return fail_item("module not importable")
+    if name == "paramiko":
+        import paramiko
+
+        try:
+            major = int(paramiko.__version__.split(".", 1)[0])
+        except (AttributeError, ValueError):
+            major = 0
+        if major >= 5:
+            return fail_item(
+                "Paramiko 5 removed the ssh-rsa host-key algorithm required by the BJTU SSH proxy",
+                version=paramiko.__version__,
+                required="paramiko>=3.4,<5",
+            )
+        return ok_item(origin=spec.origin, version=paramiko.__version__)
+    return ok_item(origin=spec.origin)
 
 
 def command_check(name: str) -> dict[str, Any]:

@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,6 +22,7 @@ SCRIPT = (
 )
 
 
+@unittest.skipUnless(shutil.which("bash"), "requires a local Bash interpreter")
 class HpcShmArtifactCacheTests(unittest.TestCase):
     def build_fixture(self, root: Path) -> tuple[dict, dict]:
         source = root / "image.png"

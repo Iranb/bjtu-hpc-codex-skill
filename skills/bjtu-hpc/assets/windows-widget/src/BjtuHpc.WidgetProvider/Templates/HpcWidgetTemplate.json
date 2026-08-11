@@ -1,0 +1,159 @@
+{
+  "type": "AdaptiveCard",
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.6",
+  "body": [
+    {
+      "type": "ColumnSet",
+      "columns": [
+        {
+          "type": "Column",
+          "width": "stretch",
+          "items": [
+            { "type": "TextBlock", "text": "BJTU HPC", "weight": "Bolder", "size": "Medium" },
+            { "type": "TextBlock", "text": "OPERATIONS MONITOR  |  ${generation}", "isSubtle": true, "spacing": "None", "size": "Small" }
+          ]
+        },
+        {
+          "type": "Column",
+          "width": "auto",
+          "verticalContentAlignment": "Center",
+          "items": [
+            { "type": "TextBlock", "text": "${status}", "weight": "Bolder", "color": "Good", "horizontalAlignment": "Right" },
+            { "type": "TextBlock", "text": "${updated}", "isSubtle": true, "spacing": "None", "size": "Small", "horizontalAlignment": "Right" }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "style": "emphasis",
+      "spacing": "Medium",
+      "bleed": true,
+      "items": [
+        { "type": "TextBlock", "text": "GPU AVAILABLE", "isSubtle": true, "size": "Small", "weight": "Bolder" },
+        {
+          "type": "ColumnSet",
+          "spacing": "None",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                { "type": "TextBlock", "text": "${gpuFree}", "weight": "Bolder", "size": "ExtraLarge", "color": "Accent", "spacing": "None" }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "verticalContentAlignment": "Bottom",
+              "items": [
+                { "type": "TextBlock", "text": "of ${gpuTotal}", "isSubtle": true, "spacing": "None" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "ColumnSet",
+          "spacing": "Medium",
+          "columns": [
+            { "type": "Column", "width": "stretch", "items": [ { "type": "TextBlock", "text": "RUNNING", "isSubtle": true, "size": "Small" }, { "type": "TextBlock", "text": "${running}", "weight": "Bolder", "color": "Good", "spacing": "None" } ] },
+            { "type": "Column", "width": "stretch", "items": [ { "type": "TextBlock", "text": "PENDING", "isSubtle": true, "size": "Small" }, { "type": "TextBlock", "text": "${pending}", "weight": "Bolder", "color": "Warning", "spacing": "None" } ] },
+            { "type": "Column", "width": "stretch", "$when": "${$host.widgetSize != \"small\"}", "items": [ { "type": "TextBlock", "text": "CPU AVAILABLE", "isSubtle": true, "size": "Small" }, { "type": "TextBlock", "text": "${cpuFree} / ${cpuTotal}", "weight": "Bolder", "spacing": "None" } ] }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "$when": "${hasNotice}",
+      "text": "${notice}",
+      "color": "Warning",
+      "size": "Small",
+      "wrap": true,
+      "spacing": "Medium"
+    },
+    {
+      "type": "Container",
+      "$when": "${$host.widgetSize != \"small\"}",
+      "spacing": "Medium",
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            { "type": "Column", "width": "stretch", "items": [ { "type": "TextBlock", "text": "ACCOUNTS", "weight": "Bolder", "size": "Small" } ] },
+            { "type": "Column", "width": "auto", "items": [ { "type": "TextBlock", "text": "PAGE ${page} / ${pageCount}", "isSubtle": true, "size": "Small", "horizontalAlignment": "Right" } ] }
+          ]
+        },
+        {
+          "type": "Container",
+          "$data": "${accounts}",
+          "separator": true,
+          "spacing": "Small",
+          "items": [
+            {
+              "type": "ColumnSet",
+              "columns": [
+                {
+                  "type": "Column",
+                  "width": "stretch",
+                  "items": [
+                    { "type": "TextBlock", "text": "${alias}", "weight": "Bolder", "size": "Small" },
+                    { "type": "TextBlock", "text": "${status}", "color": "Accent", "isSubtle": true, "size": "Small", "spacing": "None" }
+                  ]
+                },
+                {
+                  "type": "Column",
+                  "width": "auto",
+                  "verticalContentAlignment": "Center",
+                  "items": [
+                    { "type": "TextBlock", "text": "R ${running}   Q ${pending}   G ${runningGpus}", "isSubtle": true, "size": "Small", "horizontalAlignment": "Right" }
+                  ]
+                },
+                {
+                  "type": "Column",
+                  "width": "auto",
+                  "$when": "${needsLogin}",
+                  "verticalContentAlignment": "Center",
+                  "items": [
+                    {
+                      "type": "ActionSet",
+                      "actions": [
+                        { "type": "Action.Execute", "title": "Sign in", "verb": "refreshAccount", "data": { "account": "${alias}" } }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "$when": "${$host.widgetSize == \"large\"}",
+      "separator": true,
+      "spacing": "Medium",
+      "items": [
+        { "type": "TextBlock", "text": "GPU NODES", "weight": "Bolder", "size": "Small" },
+        {
+          "type": "ColumnSet",
+          "$data": "${nodes}",
+          "columns": [
+            { "type": "Column", "width": "stretch", "items": [ { "type": "TextBlock", "text": "${name}", "weight": "Bolder", "size": "Small" }, { "type": "TextBlock", "text": "${state}", "isSubtle": true, "size": "Small", "spacing": "None" } ] },
+            { "type": "Column", "width": "auto", "verticalContentAlignment": "Center", "items": [ { "type": "TextBlock", "text": "${gpuFree} / ${gpuTotal} GPU", "color": "Good", "weight": "Bolder", "size": "Small" } ] }
+          ]
+        },
+        { "type": "TextBlock", "text": "${legend}", "isSubtle": true, "size": "Small", "wrap": true, "spacing": "Medium" }
+      ]
+    }
+  ],
+  "actions": [
+    { "type": "Action.Execute", "title": "Reload", "verb": "refresh" },
+    { "type": "Action.Execute", "title": "Refresh tokens", "verb": "refreshAllTokens" },
+    { "type": "Action.Execute", "title": "Previous", "verb": "previousPage", "$when": "${$host.widgetSize != \"small\"}" },
+    { "type": "Action.Execute", "title": "Next", "verb": "nextPage", "$when": "${$host.widgetSize != \"small\"}" },
+    { "type": "Action.Execute", "title": "Dashboard", "verb": "openDashboard", "$when": "${$host.widgetSize == \"large\"}" }
+  ]
+}

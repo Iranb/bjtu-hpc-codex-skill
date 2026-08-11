@@ -2,11 +2,18 @@
 import json
 import os
 import re
-import fcntl
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple, Union
+
+from hpc_platform import (
+    PlatformSecurityError,
+    assert_private_path,
+    exclusive_file_lock,
+    harden_open_file,
+    harden_private_path,
+)
 
 
 DEFAULT_ACCOUNTS_FILE = Path(os.getenv("HPC_ACCOUNTS_FILE", "~/.bjtu_hpc_accounts.json")).expanduser()
@@ -68,42 +75,47 @@ def save_store(store: dict, path: Optional[PathLike] = None) -> None:
 def _locked_atomic_write(path: Path, text: str, mode: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = path.with_name(f"{path.name}.lock")
-    lock_fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT, 0o600)
+    lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
     tmp_name = None
     try:
-        with os.fdopen(lock_fd, "w") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            tmp_fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-            try:
-                os.fchmod(tmp_fd, mode)
-                with os.fdopen(tmp_fd, "w", encoding="utf-8") as tmp_file:
-                    tmp_file.write(text)
-                    tmp_file.flush()
-                    os.fsync(tmp_file.fileno())
-                os.replace(tmp_name, path)
-                os.chmod(path, mode)
-                tmp_name = None
-            finally:
-                if tmp_name:
+        harden_private_path(lock_path, 0o600)
+        with os.fdopen(lock_fd, "r+") as lock_file:
+            lock_fd = -1
+            with exclusive_file_lock(lock_file):
+                tmp_fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+                try:
                     try:
-                        os.unlink(tmp_name)
-                    except FileNotFoundError:
-                        pass
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                        harden_open_file(tmp_fd, tmp_name, mode)
+                    except Exception:
+                        os.close(tmp_fd)
+                        raise
+                    with os.fdopen(tmp_fd, "w", encoding="utf-8") as tmp_file:
+                        tmp_file.write(text)
+                        tmp_file.flush()
+                        os.fsync(tmp_file.fileno())
+                    os.replace(tmp_name, path)
+                    harden_private_path(path, mode)
+                    tmp_name = None
+                finally:
+                    if tmp_name:
+                        try:
+                            os.unlink(tmp_name)
+                        except FileNotFoundError:
+                            pass
     finally:
+        if lock_fd >= 0:
+            os.close(lock_fd)
         try:
-            os.chmod(lock_path, 0o600)
+            harden_private_path(lock_path, 0o600)
         except FileNotFoundError:
             pass
 
 
 def _reject_loose_secret_permissions(path: Path) -> None:
-    mode = path.stat().st_mode & 0o777
-    if mode & 0o077:
-        raise AccountStoreError(
-            f"credential file is readable by group/others: {path} mode={mode:o}; "
-            "run chmod 600 before using it."
-        )
+    try:
+        assert_private_path(path, 0o600)
+    except PlatformSecurityError as error:
+        raise AccountStoreError(str(error)) from error
 
 
 def load_credentials(path: Optional[PathLike] = None) -> dict:

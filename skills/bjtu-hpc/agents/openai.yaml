@@ -1,4 +1,4 @@
 interface:
   display_name: "BJTU HPC"
-  short_description: "Safely plan and run single or batch BJTU HPC tasks"
-  default_prompt: "Use $bjtu-hpc to inspect BJTU HPC or run prepared single or batch tasks through the refresh-gated submit cycle."
+  short_description: "Run BJTU HPC safely and maintain its widgets"
+  default_prompt: "Use $bjtu-hpc to inspect or run BJTU HPC work and maintain the current redacted desktop widgets."

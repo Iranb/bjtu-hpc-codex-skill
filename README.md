@@ -10,7 +10,7 @@ The skills cover:
 - Captcha-only login when local credentials are stored outside Git.
 - Token Guardian background validation and headless refresh after an initial visible CAS login.
 - Fast native queue summaries across saved accounts, portal job listing, native Slurm pending-reason checks, and post-submit evidence collection.
-- Optional macOS menu bar monitor and compact desktop widget for queue and GPU-node status.
+- Redacted Windows 10 desktop and Windows 11 Widgets Board components, plus the optional macOS monitor/widget, for queue and GPU-node status.
 - Stable dataset layout and cross-account dataset reuse.
 - Refresh-gated native Slurm admission with exact-script byte binding, durable receipts, post-submit verification, and crash-safe reconciliation.
 
@@ -18,6 +18,7 @@ The skills cover:
 
 - `skills/bjtu-hpc/SKILL.md`: general BJTU HPC workflow and operational guardrails.
 - `skills/bjtu-hpc/scripts/`: sanitized portable mirror of the locally installed controller helpers, including account/auth, transfer, queue, planning, native submission, submit-cycle, data-supply, MCP, Widget snapshot, schemas, and their Python requirements.
+- `skills/bjtu-hpc/assets/windows-widget/`: canonical Windows widget source locked to the current cross-platform HPC widget generation.
 - `skills/bjtu-hpc-submit/SKILL.md`: tool-first submit/status/auth workflow for agents.
 - `skills/bjtu-hpc/references/`: split reference files for auth/dashboard, data transfer, GPU scheduling, inspection, guardrails, and validated platform notes.
 - `skills/bjtu-hpc/references/environment_setup.md`: Python 3.12 bootstrap and encrypted account migration/decryption.
@@ -29,8 +30,8 @@ small portability and privacy overlay: controller paths and identities become
 environment variables/placeholders, private state is excluded, and commands
 that formerly depended on a private dataset inventory require explicit input.
 The Apple-native UI and Kindle implementation remain in their dedicated local
-repositories; this repository includes only the BJTU helper-side contracts and
-redacted Widget snapshot adapter.
+repositories. This repository includes their BJTU helper-side contracts and
+redacted Widget snapshot adapter, plus the independent canonical Windows UI.
 
 ## Portable Controller Tools
 
