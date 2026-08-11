@@ -19,7 +19,7 @@ Proceed only when it returns `status: ok`, and build only `selected_source_root`
 
 Both hosts read only the local redacted snapshot. They never read the account store, portal tokens, cookies, browser profiles, or SSH credentials. Snapshot reload is a read-only operation. Token refresh is a separate explicit action sent to the loopback dashboard endpoint.
 
-The WPF host uses a notification-area icon and does not create a taskbar button. Its close button, `Esc`, and `Alt+F4` hide the window while leaving snapshot monitoring active. Double-click the notification icon or choose **Show widget** to restore it. The icon menu also provides **Reload snapshot**, **Open dashboard**, and the only deliberate **Exit** action. Windows decides whether the icon is shown directly beside the clock or inside the notification-area overflow (the hidden-icons chevron).
+The WPF host uses its dedicated transparent compute-chip/GPU-pulse notification icon and does not create a taskbar button. Do not reuse the text-based Provider logo for this small surface. Its close button, `Esc`, and `Alt+F4` hide the window while leaving snapshot monitoring active. Double-click the notification icon or choose **Show widget** to restore it. The icon menu also provides **Reload snapshot**, **Open dashboard**, and the only deliberate **Exit** action. Windows decides whether the icon is shown directly beside the clock or inside the notification-area overflow (the hidden-icons chevron).
 
 ## Background Data Contract
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import struct
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -106,10 +107,12 @@ def test_wpf_widget_uses_notification_area_without_taskbar_button() -> None:
     main_window = (desktop / "MainWindow.xaml").read_text(encoding="utf-8")
     main_window_code = (desktop / "MainWindow.xaml.cs").read_text(encoding="utf-8")
     tray_host = (desktop / "TrayIconHost.cs").read_text(encoding="utf-8")
+    tray_logo = desktop / "Assets" / "TrayLogo.png"
 
     assert 'ShutdownMode="OnExplicitShutdown"' in app_xaml
     assert "<UseWindowsForms>true</UseWindowsForms>" in project
     assert "Assets\\TrayLogo.png" in project
+    assert "BjtuHpc.WidgetProvider\\Assets" not in project
     assert 'ShowInTaskbar="False"' in main_window
     assert "Hide widget to notification area" in main_window
     assert "HideToTray" in main_window_code
@@ -120,3 +123,11 @@ def test_wpf_widget_uses_notification_area_without_taskbar_button() -> None:
         label in tray_host
         for label in ("Show widget", "Reload snapshot", "Open dashboard", "Exit")
     )
+
+    png = tray_logo.read_bytes()
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    width, height, bit_depth, color_type = struct.unpack(">IIBB", png[16:26])
+    assert width == height
+    assert width >= 256
+    assert bit_depth == 8
+    assert color_type == 6  # RGBA; the notification icon must retain transparency.

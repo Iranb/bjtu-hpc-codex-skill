@@ -15,10 +15,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="..\BjtuHpc.WidgetProvider\Assets\Square44x44Logo.png"
-             Link="Assets\TrayLogo.png"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
+    <None Update="Assets\TrayLogo.png"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
