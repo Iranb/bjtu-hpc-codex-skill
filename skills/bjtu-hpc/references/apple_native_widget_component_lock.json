@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "updated_at": "<DEPLOYMENT_TIMESTAMP>",
+  "component": "bjtu-hpc-native-widget",
+  "host_bundle_id": "com.example.bjtu-hpc-native-widget",
+  "widget_extension_bundle_id": "com.example.bjtu-hpc-native-widget.widget",
+  "deployed_app_path": "<CONTROLLER_HOME>/Applications/BJTU HPC Native Widget.app",
+  "deployed_extension_relative_path": "Contents/PlugIns/BJTUHPCWidgetExtension.appex",
+  "short_version": "3.5",
+  "build_version": "19",
+  "canonical_source_root": "<APPLE_NATIVE_WIDGET_SOURCE>",
+  "source_host_info_plist": "HPC/AppInfo.plist",
+  "source_extension_info_plist": "HPC/ExtensionInfo.plist",
+  "ui_source_files": [
+    "HPC/HPCWidget.swift",
+    "HPC/HPCApp.swift",
+    "xcode/CMakeLists.txt"
+  ],
+  "required_source_markers": {
+    "HPC/HPCWidget.swift": [
+      "struct HPCWidgetView",
+      "RefreshAllTokensControl"
+    ],
+    "HPC/HPCApp.swift": [
+      "refresh-all-tokens",
+      "api/token-guardian/visible-refresh"
+    ]
+  },
+  "legacy_ui_source_roots": [
+    "<SLURM_DIR>/mac_hpc_monitor/native_widget/Sources/Widget"
+  ],
+  "shared_backend_sources": [
+    {
+      "root": "<SLURM_DIR>/mac_hpc_monitor/native_widget",
+      "allowed_files": [
+        "hpc_native_widget_snapshot.py",
+        "run_native_widget_snapshot.sh",
+        "install_native_widget.sh",
+        "uninstall_native_widget.sh"
+      ],
+      "note": "Backend ownership does not make this tree the current UI source."
+    }
+  ]
+}

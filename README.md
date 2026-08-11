@@ -17,16 +17,20 @@ The skills cover:
 ## Skills
 
 - `skills/bjtu-hpc/SKILL.md`: general BJTU HPC workflow and operational guardrails.
-- `skills/bjtu-hpc/scripts/`: portable account, credential, diagnosis, token-refresh, portal/native queue inspection, encrypted-migration, and identity-verification helpers with their Python requirements.
+- `skills/bjtu-hpc/scripts/`: sanitized portable mirror of the locally installed controller helpers, including account/auth, transfer, queue, planning, native submission, submit-cycle, data-supply, MCP, Widget snapshot, schemas, and their Python requirements.
 - `skills/bjtu-hpc-submit/SKILL.md`: tool-first submit/status/auth workflow for agents.
-- `skills/bjtu-hpc-submit/mac_hpc_monitor/`: sanitized optional macOS monitor/widget scripts.
 - `skills/bjtu-hpc/references/`: split reference files for auth/dashboard, data transfer, GPU scheduling, inspection, guardrails, and validated platform notes.
 - `skills/bjtu-hpc/references/environment_setup.md`: Python 3.12 bootstrap and encrypted account migration/decryption.
+- `LOCAL_SYNC.md`: local-first source scope, required redaction overlay, exclusions, and publication checks.
 
-The bundled controller tools are intentionally narrower than the private helper
-workspace. They include the complete local import closure needed by the account,
-doctor, refresh, and queue entry points; portal requests use a focused HTTP
-module and do not bundle the remote file-upload or submission CLIs.
+The local installed skills and the local `slurm` helper workspace are the source
+of truth. This public mirror keeps their operational behavior while applying a
+small portability and privacy overlay: controller paths and identities become
+environment variables/placeholders, private state is excluded, and commands
+that formerly depended on a private dataset inventory require explicit input.
+The Apple-native UI and Kindle implementation remain in their dedicated local
+repositories; this repository includes only the BJTU helper-side contracts and
+redacted Widget snapshot adapter.
 
 ## Portable Controller Tools
 
@@ -40,6 +44,10 @@ export HPC_TOOLS="$PWD/skills/bjtu-hpc/scripts"
 "$HPC_PYTHON" "$HPC_TOOLS/hpc_accounts.py" list
 "$HPC_PYTHON" "$HPC_TOOLS/hpc_credentials.py" list
 "$HPC_PYTHON" "$HPC_TOOLS/hpc_queue_summary.py" --details
+"$HPC_PYTHON" "$HPC_TOOLS/hpc_submit_cycle.py" validate --manifest <manifest.json>
+"$HPC_PYTHON" "$HPC_TOOLS/hpc_native_submit.py" ./candidate.sbatch \
+  --auth-account <auth_account> --expected-gpus 1 \
+  --expected-ntasks 1 --expected-cpus-per-task 6
 ```
 
 ## Sanitization
@@ -53,8 +61,14 @@ This repository intentionally replaces site-specific or private values with plac
 - `<cluster_account_main>` / `<cluster_account_other>`: cluster OS accounts.
 - `<dataset_name>`: stable dataset directory name.
 - `<proxy_host>:<proxy_port>`: temporary portal SSH/SFTP proxy endpoint.
+- `<CONTROLLER_HOME>` / `<SLURM_DIR>`: private local paths that must be configured outside Git.
+- `<SOURCE_HOST>` / `<SOURCE_USER>`: private data-source infrastructure values.
 
 Do not commit portal tokens, cookies, temporary SSH certificates, passwords, personal paths, browser profiles, or real account IDs.
+
+Generated account stores, transfer-task JSON, snapshots, receipts, intents,
+private trace ledgers, logs, keys, certificates, and migration envelopes are
+excluded by `.gitignore` and must remain outside the repository.
 
 ## Recommended Auth Flow
 

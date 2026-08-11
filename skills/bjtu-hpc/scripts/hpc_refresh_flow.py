@@ -91,10 +91,10 @@ def verify_real_portal_call(enabled, account):
         python_cmd(
             ROOT / "hpc_jobs.py",
             "list",
-            "--auth-account",
-            account,
             "--size",
             "3",
+            "--auth-account",
+            account,
         ),
     )
 
@@ -130,12 +130,12 @@ def run_post_status(args, account):
     if args.after_jobs_keyword is not None:
         command = [
             *python_cmd(ROOT / "hpc_jobs.py", "list"),
-            "--auth-account",
-            account,
             "--keyword",
             args.after_jobs_keyword,
             "--size",
             str(args.after_jobs_size),
+            "--auth-account",
+            account,
         ]
         if args.after_jobs_paths:
             command.append("--paths")
@@ -153,14 +153,14 @@ def run_post_status(args, account):
                 "save post-login portal job status JSON",
                 [
                     *python_cmd(ROOT / "hpc_jobs.py", "list"),
-                    "--auth-account",
-                    account,
                     "--keyword",
                     args.after_jobs_keyword,
                     "--size",
                     str(args.after_jobs_size),
                     "--paths",
                     "--json",
+                    "--auth-account",
+                    account,
                 ],
                 json_path,
             )

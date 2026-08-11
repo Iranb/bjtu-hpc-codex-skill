@@ -338,13 +338,16 @@ def apply_auth_account_defaults(
     if not name:
         return
     _, entry = get_account(name)
-    if default_cluster is not None and hasattr(args, "cluster") and args.cluster == default_cluster:
+    if hasattr(args, "cluster") and (
+        not args.cluster or (default_cluster is not None and args.cluster == default_cluster)
+    ):
         args.cluster = entry.get("cluster") or args.cluster
-    if default_account is not None and hasattr(args, "account") and args.account == default_account:
+    if hasattr(args, "account") and (
+        not args.account or (default_account is not None and args.account == default_account)
+    ):
         args.account = entry.get("account") or args.account
-    if (
-        default_portal_user is not None
-        and hasattr(args, "portal_user")
-        and args.portal_user == default_portal_user
+    if hasattr(args, "portal_user") and (
+        not args.portal_user
+        or (default_portal_user is not None and args.portal_user == default_portal_user)
     ):
         args.portal_user = entry.get("portal_user") or args.portal_user

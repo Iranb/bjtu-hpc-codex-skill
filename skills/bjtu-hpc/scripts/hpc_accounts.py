@@ -212,10 +212,6 @@ def handle_add(args):
     account = args.account
     if account is None and not args.refresh:
         account = DEFAULT_ACCOUNT
-        if not account:
-            raise AccountStoreError(
-                "cluster account is required without --refresh; pass --account or set HPC_ACCOUNT"
-            )
     upsert_account(
         args.name,
         portal_user=portal_user,
@@ -493,7 +489,7 @@ def build_parser():
 
     add_parser = subparsers.add_parser("add", help="Add or update an auth account profile")
     add_parser.add_argument("name")
-    add_parser.add_argument("--portal-user", help="Portal login user")
+    add_parser.add_argument("--portal-user", help="Portal login user; omit with --refresh to discover it")
     add_parser.add_argument("--cluster", default=DEFAULT_CLUSTER)
     add_parser.add_argument("--account", help="Cluster OS account; omit with --refresh to discover it")
     add_parser.add_argument("--set-default", action="store_true")
@@ -507,7 +503,7 @@ def build_parser():
 
     export_parser = subparsers.add_parser(
         "export-json",
-        help="Export portable account metadata and optional encrypted secrets to a private JSON file",
+        help="Export portable account metadata and optional plaintext secrets to a private JSON file",
     )
     export_parser.add_argument("output", type=Path)
     export_parser.add_argument(
@@ -560,7 +556,7 @@ def build_parser():
     import_parser = subparsers.add_parser("import-legacy", help="Import ~/.bjtu_hpc_token into a saved auth account")
     import_parser.add_argument("name")
     import_parser.add_argument("--token-file", type=Path, default=DEFAULT_LEGACY_TOKEN_FILE)
-    import_parser.add_argument("--portal-user", help="Portal login user")
+    import_parser.add_argument("--portal-user", help="Portal login user; omit to discover it")
     import_parser.add_argument("--cluster", default=DEFAULT_CLUSTER)
     import_parser.add_argument("--account", help="Cluster OS account; omit to discover it")
     import_parser.add_argument("--profile-dir", type=Path, help="Playwright profile directory for this account")

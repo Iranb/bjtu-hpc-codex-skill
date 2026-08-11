@@ -69,7 +69,7 @@ def parse_args():
         "--cap",
         type=int,
         default=2,
-        help="Expected non-terminal job cap per auth account. Default: 2.",
+        help="Expected non-terminal job cap per auth account. Default: 2 with no queued follow-up.",
     )
     parser.add_argument(
         "--run-slots",

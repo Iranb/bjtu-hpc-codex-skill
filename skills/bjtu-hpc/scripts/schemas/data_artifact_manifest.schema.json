@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autoreskill.local/schemas/data_artifact_manifest.schema.json",
+  "title": "AutoResearch Data Artifact Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "artifact_schema",
+    "dataset_semantics_sha256",
+    "source_inventory_sha256",
+    "artifact_build_contract_sha256",
+    "converter_bundle_sha256",
+    "artifact_content_sha256",
+    "total_size_bytes",
+    "shards"
+  ],
+  "properties": {
+    "schema": {"const": "autoreskill.data_artifact_manifest.v1"},
+    "artifact_schema": {"const": "image_bytes_indexed_v1"},
+    "dataset_semantics_sha256": {"$ref": "#/$defs/sha256"},
+    "source_inventory_sha256": {"$ref": "#/$defs/sha256"},
+    "artifact_build_contract_sha256": {"$ref": "#/$defs/sha256"},
+    "converter_bundle_sha256": {"$ref": "#/$defs/sha256"},
+    "artifact_content_sha256": {"$ref": "#/$defs/sha256"},
+    "total_size_bytes": {"type": "integer", "minimum": 0},
+    "shards": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "size_bytes", "sha256"],
+        "properties": {
+          "path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},
+          "size_bytes": {"type": "integer", "minimum": 0},
+          "sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

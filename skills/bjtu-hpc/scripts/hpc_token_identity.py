@@ -8,13 +8,13 @@ PORTAL_PCP_URL = f"{PORTAL_ORIGIN}/pcp"
 
 
 def create_session():
-    from hpc_portal_api import create_session as make_session
+    from hpc_upload import create_session as make_session
 
     return make_session()
 
 
 def get_portal_self(session, token):
-    from hpc_portal_api import request_json
+    from hpc_upload import request_json
 
     return request_json(
         session,
@@ -25,7 +25,7 @@ def get_portal_self(session, token):
 
 
 def get_bound_accounts(session, token):
-    from hpc_portal_api import request_json
+    from hpc_upload import request_json
 
     data = request_json(
         session,

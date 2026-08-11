@@ -14,7 +14,7 @@ require_controller_python()
 warnings.filterwarnings("ignore", message=r"urllib3 v2 only supports OpenSSL.*")
 
 from hpc_account_store import apply_auth_account_defaults
-from hpc_portal_api import (
+from hpc_upload import (
     AUTH_ERROR_MESSAGE,
     BASE_URL,
     DEFAULT_TOKEN_FILE,
@@ -169,7 +169,7 @@ def load_auth(args):
         token = refresh_token(token_file, args.refresh_browser, args.refresh_headless, auth_account=auth_account)
     if not token:
         print(
-            f"Missing token. Run: {sys.executable} hpc_refresh_token.py "
+            f"Missing token. Run: {os.getenv('HPC_PYTHON', 'python3.12')} hpc_refresh_token.py "
             f"or retry with --refresh-token. "
             f"You can also set HPC_PARA_ATOKEN / --token / --token-file {args.token_file}",
             file=sys.stderr,

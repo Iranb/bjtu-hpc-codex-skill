@@ -30,29 +30,33 @@ from hpc_refresh_token import INVALID_TOKEN_CODES, redact_token_text, validate_t
 
 ROOT = Path(__file__).resolve().parent
 REQUIRED_SCRIPTS = [
-    "hpc_account_migration.py",
-    "hpc_account_store.py",
     "hpc_accounts.py",
-    "hpc_credentials.py",
-    "hpc_doctor.py",
-    "hpc_jobs.py",
-    "hpc_pending_reason.py",
-    "hpc_portal_api.py",
-    "hpc_queue_summary.py",
     "hpc_refresh_flow.py",
     "hpc_refresh_token.py",
-    "hpc_resource_history.py",
-    "hpc_runtime.py",
-    "hpc_token_identity.py",
     "hpc_winscp_info.py",
-]
-OPTIONAL_FULL_WORKSPACE_SCRIPTS = [
     "hpc_upload.py",
     "hpc_submit.py",
+    "hpc_jobs.py",
+    "hpc_pending_reason.py",
+    "hpc_queue_summary.py",
+    "hpc_plan_from_snapshot.py",
+    "hpc_resource_planner.py",
+    "hpc_native_submit.py",
+    "hpc_submit_cycle.py",
     "dataset_upload_progress.py",
     "hpc_mcp_server.py",
 ]
-PYTHON_MODULES = ["requests", "paramiko", "playwright", "mcp", "jsonschema", "cryptography"]
+PYTHON_MODULES = [
+    "requests",
+    "paramiko",
+    "playwright",
+    "mcp",
+    "jsonschema",
+    "cryptography",
+    "h5py",
+    "numpy",
+    "PIL",
+]
 COMMANDS = ["ssh", "screen", "tar"]
 
 
@@ -203,24 +207,24 @@ def load_token_for_doctor(env_token: str | None, token_file: Path, auth_account:
 
 def deep_report(args: argparse.Namespace) -> dict[str, Any]:
     checks: dict[str, Any] = {}
-    if not args.source_host:
-        checks["source_host"] = fail_item("pass --source-host or set HPC_SOURCE_HOST")
-        return checks
-    checks["source_host"] = run_probe(
-        [
-            "ssh",
-            "-n",
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            f"ConnectTimeout={args.timeout}",
-            "-o",
-            "ConnectionAttempts=1",
-            args.source_host,
-            "true",
-        ],
-        timeout=args.timeout + 2,
-    )
+    if args.source_host:
+        checks["source_host"] = run_probe(
+            [
+                "ssh",
+                "-n",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                f"ConnectTimeout={args.timeout}",
+                "-o",
+                "ConnectionAttempts=1",
+                args.source_host,
+                "true",
+            ],
+            timeout=args.timeout + 2,
+        )
+    else:
+        checks["source_host"] = {"status": "skipped", "reason": "source host is not configured"}
     return checks
 
 
@@ -229,17 +233,12 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         name: ok_item(path=str(ROOT / name)) if (ROOT / name).exists() else fail_item("missing")
         for name in REQUIRED_SCRIPTS
     }
-    optional_scripts = {
-        name: ok_item(path=str(ROOT / name)) if (ROOT / name).exists() else fail_item("not bundled")
-        for name in OPTIONAL_FULL_WORKSPACE_SCRIPTS
-    }
     report = {
         "success": True,
         "workspace": {
             "root": str(ROOT),
             "cwd": str(Path.cwd()),
             "scripts": scripts,
-            "optional_full_workspace_scripts": optional_scripts,
         },
         "python": {
             "executable": sys.executable,
@@ -264,7 +263,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     elif report["auth"].get("validation") and not report["auth"]["validation"].get("ok"):
         recommendations.append("Token validation failed; refresh the selected auth account.")
     if not all(item["ok"] for item in scripts.values()):
-        recommendations.append("Restore the complete bundled scripts directory.")
+        recommendations.append("Run from a complete copy of the slurm helper workspace.")
 
     report["success"] = not recommendations
     return report
@@ -298,7 +297,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--token-file", type=Path, default=DEFAULT_LEGACY_TOKEN_FILE)
     parser.add_argument("--no-validate", action="store_true", help="Do not call the portal token self-check endpoint.")
     parser.add_argument("--deep", action="store_true", help="Run slow optional SSH/source-host probes.")
-    parser.add_argument("--source-host", default=os.getenv("HPC_SOURCE_HOST", ""))
+    parser.add_argument("--source-host", default=os.getenv("DATASET_SOURCE_HOST"))
     parser.add_argument("--timeout", type=int, default=10)
     return parser.parse_args()
 

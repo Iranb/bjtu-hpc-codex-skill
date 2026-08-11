@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autoreskill.local/schemas/hpc_data_supply_remote_receipt.schema.json",
+  "title": "AutoResearch HPC Data Supply Remote Mutation Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "intent_id",
+    "plan_sha256",
+    "artifact_content_sha256",
+    "native_provider_bundle_sha256",
+    "storage_owner",
+    "final_root",
+    "operation",
+    "committed_at"
+  ],
+  "properties": {
+    "schema": {"const": "autoreskill.hpc_data_supply_remote_receipt.v1"},
+    "intent_id": {"$ref": "#/$defs/sha256"},
+    "plan_sha256": {"$ref": "#/$defs/sha256"},
+    "artifact_content_sha256": {"$ref": "#/$defs/sha256"},
+    "native_provider_bundle_sha256": {"$ref": "#/$defs/sha256"},
+    "storage_owner": {"type": "object"},
+    "final_root": {"type": "string", "pattern": "^/"},
+    "operation": {"const": "upload_commit_share"},
+    "committed_at": {"type": "string", "minLength": 1}
+  },
+  "$defs": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+}

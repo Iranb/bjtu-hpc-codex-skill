@@ -13,7 +13,7 @@ from hpc_runtime import require_controller_python
 require_controller_python()
 
 from hpc_account_store import apply_auth_account_defaults
-from hpc_portal_api import (
+from hpc_upload import (
     BASE_URL,
     DEFAULT_TOKEN_FILE,
     create_session,
