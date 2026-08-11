@@ -12,3 +12,7 @@ __pycache__/
 bjtu_hpc_widget_preview.png
 BJTUHPCWidget/
 BJTUHPCMonitor/
+# Local BJTU account stores and migration secrets
+.bjtu_hpc_*
+*.encrypted.json
+*.passphrase

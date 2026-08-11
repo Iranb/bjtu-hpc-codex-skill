@@ -6,12 +6,13 @@ The skills cover:
 
 - Portal token refresh with Playwright.
 - Saved multi-account auth.
+- Passphrase-encrypted JSON account migration with in-memory authenticated decryption.
 - Captcha-only login when local credentials are stored outside Git.
 - Token Guardian background validation and headless refresh after an initial visible CAS login.
 - Fast native queue summaries across saved accounts, portal job listing, native Slurm pending-reason checks, and post-submit evidence collection.
 - Optional macOS menu bar monitor and compact desktop widget for queue and GPU-node status.
 - Stable dataset layout and cross-account dataset reuse.
-- Safe GPU job submission patterns for single-GPU and packed Slurm jobs, including monitor-snapshot resource selection, exact native Slurm preflight, ordinary `1GPU/6CPU` requests, resource-wait `1GPU/4CPU` fallback, low-VRAM GPU-sharing, GPU-fill fragment jobs, and 2GPU-to-1GPU compatibility fallback.
+- Refresh-gated native Slurm admission with exact-script byte binding, durable receipts, post-submit verification, and crash-safe reconciliation.
 
 ## Skills
 
@@ -19,6 +20,7 @@ The skills cover:
 - `skills/bjtu-hpc-submit/SKILL.md`: tool-first submit/status/auth workflow for agents.
 - `skills/bjtu-hpc-submit/mac_hpc_monitor/`: sanitized optional macOS monitor/widget scripts.
 - `skills/bjtu-hpc/references/`: split reference files for auth/dashboard, data transfer, GPU scheduling, inspection, guardrails, and validated platform notes.
+- `skills/bjtu-hpc/references/environment_setup.md`: Python 3.12 bootstrap and encrypted account migration/decryption.
 
 ## Sanitization
 
