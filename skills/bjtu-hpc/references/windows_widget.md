@@ -19,6 +19,8 @@ Proceed only when it returns `status: ok`, and build only `selected_source_root`
 
 Both hosts read only the local redacted snapshot. They never read the account store, portal tokens, cookies, browser profiles, or SSH credentials. Snapshot reload is a read-only operation. Token refresh is a separate explicit action sent to the loopback dashboard endpoint.
 
+The WPF host uses a notification-area icon and does not create a taskbar button. Its close button, `Esc`, and `Alt+F4` hide the window while leaving snapshot monitoring active. Double-click the notification icon or choose **Show widget** to restore it. The icon menu also provides **Reload snapshot**, **Open dashboard**, and the only deliberate **Exit** action. Windows decides whether the icon is shown directly beside the clock or inside the notification-area overflow (the hidden-icons chevron).
+
 ## Background Data Contract
 
 The desktop installer must install the complete data path, not only the WPF executable:
@@ -38,6 +40,7 @@ The task may query live read-only queue state. It never submits, cancels, upload
 - Keep account aliases local and redacted; never add tokens or portal response bodies to widget data.
 - Show compact resource status at small size, account rows at medium and large sizes, and node/legend detail at large size.
 - Use the bundled WPF resource dictionary for a compact Soft UI Evolution design: restrained depth, strong contrast, a consistent type scale, text plus color for status, visible keyboard focus, named automation controls, and PerMonitorV2 DPI support.
+- Keep `ShowInTaskbar="False"`, retain `ShutdownMode="OnExplicitShutdown"`, and dispose the notification icon on explicit application exit so no stale tray icon remains.
 
 ## Build and Install
 

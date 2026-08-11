@@ -11,6 +11,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using BjtuHpc.Widget.Core;
+using Button = System.Windows.Controls.Button;
 
 namespace BjtuHpc.Desktop;
 
@@ -36,6 +37,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string _updatedText = "Not updated";
     private bool _isStale = true;
     private bool _hasError;
+    private bool _closeForExit;
 
     public MainWindow()
     {
@@ -194,8 +196,43 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void CloseCommand_Executed(object sender, ExecutedRoutedEventArgs e)
     {
-        Close();
+        HideToTray();
         e.Handled = true;
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (!_closeForExit)
+        {
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
+
+        base.OnClosing(e);
+    }
+
+    private void HideToTray()
+    {
+        SaveConfig();
+        Hide();
+    }
+
+    internal void ShowFromTray()
+    {
+        if (!IsVisible) Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    internal Task ReloadFromTrayAsync() => ReloadAsync();
+
+    internal void OpenDashboardFromTray() => OpenUrl("http://127.0.0.1:8765/");
+
+    internal void CloseForExit()
+    {
+        _closeForExit = true;
+        Close();
     }
 
     private void TogglePinCommand_Executed(object sender, ExecutedRoutedEventArgs e)

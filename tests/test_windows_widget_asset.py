@@ -97,3 +97,26 @@ def test_wpf_design_system_has_accessible_operations_contract() -> None:
     assert "PrimaryButtonStyle" in design_system
     assert "SurfaceCardStyle" in design_system
     assert "PerMonitorV2" in app_manifest
+
+
+def test_wpf_widget_uses_notification_area_without_taskbar_button() -> None:
+    desktop = WIDGET / "src" / "BjtuHpc.Desktop"
+    app_xaml = (desktop / "App.xaml").read_text(encoding="utf-8")
+    project = (desktop / "BjtuHpc.Desktop.csproj").read_text(encoding="utf-8")
+    main_window = (desktop / "MainWindow.xaml").read_text(encoding="utf-8")
+    main_window_code = (desktop / "MainWindow.xaml.cs").read_text(encoding="utf-8")
+    tray_host = (desktop / "TrayIconHost.cs").read_text(encoding="utf-8")
+
+    assert 'ShutdownMode="OnExplicitShutdown"' in app_xaml
+    assert "<UseWindowsForms>true</UseWindowsForms>" in project
+    assert "Assets\\TrayLogo.png" in project
+    assert 'ShowInTaskbar="False"' in main_window
+    assert "Hide widget to notification area" in main_window
+    assert "HideToTray" in main_window_code
+    assert "CloseForExit" in main_window_code
+    assert "NotifyIcon" in tray_host
+    assert 'Visible = true' in tray_host
+    assert all(
+        label in tray_host
+        for label in ("Show widget", "Reload snapshot", "Open dashboard", "Exit")
+    )
