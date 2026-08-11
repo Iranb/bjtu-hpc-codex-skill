@@ -20,6 +20,6 @@ public static class WidgetCommands
         "Toggle always on top", nameof(TogglePin), typeof(WidgetCommands));
 
     public static readonly RoutedUICommand Close = new(
-        "Close widget", nameof(Close), typeof(WidgetCommands),
+        "Hide widget", nameof(Close), typeof(WidgetCommands),
         [new KeyGesture(Key.Escape)]);
 }

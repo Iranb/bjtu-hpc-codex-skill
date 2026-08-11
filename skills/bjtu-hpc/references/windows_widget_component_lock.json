@@ -27,11 +27,29 @@
       "Refresh all tokens",
       "v3.5.19",
       "AutomationProperties.Name",
-      "WidgetCommands.Reload"
+      "WidgetCommands.Reload",
+      "ShowInTaskbar=\"False\"",
+      "Hide widget to notification area"
     ],
     "src/BjtuHpc.Desktop/MainWindow.xaml.cs": [
       "accounts = \"all\"",
-      "api/token-guardian/visible-refresh"
+      "api/token-guardian/visible-refresh",
+      "HideToTray",
+      "CloseForExit"
+    ],
+    "src/BjtuHpc.Desktop/App.xaml": [
+      "ShutdownMode=\"OnExplicitShutdown\""
+    ],
+    "src/BjtuHpc.Desktop/TrayIconHost.cs": [
+      "NotifyIcon",
+      "Show widget",
+      "Reload snapshot",
+      "Open dashboard",
+      "Exit"
+    ],
+    "src/BjtuHpc.Desktop/BjtuHpc.Desktop.csproj": [
+      "<UseWindowsForms>true</UseWindowsForms>",
+      "Assets\\TrayLogo.png"
     ],
     "src/BjtuHpc.WidgetProvider/HpcWidget.cs": [
       "refreshAllTokens",

@@ -5,7 +5,7 @@
         Title="BJTU HPC Widget" Width="480" Height="680"
         MinWidth="440" MinHeight="620" WindowStyle="None" ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterScreen" AllowsTransparency="True"
-        Background="Transparent" ShowInTaskbar="True" Topmost="True"
+        Background="Transparent" ShowInTaskbar="False" Topmost="True"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         MouseLeftButtonDown="Window_MouseLeftButtonDown"
         KeyboardNavigation.TabNavigation="Cycle">
@@ -72,7 +72,7 @@
                     </Button>
                     <Button Style="{StaticResource IconButtonStyle}" Margin="2,0,0,0"
                             Command="{x:Static local:WidgetCommands.Close}"
-                            ToolTip="Close (Esc)" AutomationProperties.Name="Close widget">
+                            ToolTip="Hide to notification area (Esc)" AutomationProperties.Name="Hide widget to notification area">
                         <Path Width="14" Height="14" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                               StrokeThickness="1.8" StrokeStartLineCap="Round"
                               Data="M 4,4 L 16,16 M 16,4 L 4,16" />
