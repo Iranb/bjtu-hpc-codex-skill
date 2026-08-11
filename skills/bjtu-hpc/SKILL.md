@@ -5,7 +5,7 @@ description: "BJTU HPC portal workflow for a local helper workspace: configure a
 
 # BJTU HPC
 
-Use the helper scripts in the local `<SLURM_DIR>` workspace as the canonical interface to the BJTU HPC portal. Use the bundled `scripts/` directory to bootstrap account storage, credential management, encrypted migration, token refresh, and identity validation on a new controller.
+Use the helper scripts in the local `<SLURM_DIR>` workspace as the canonical interface to the BJTU HPC portal. Use the bundled `scripts/` directory for portable account storage, credential management, encrypted migration, controller diagnosis, token refresh, portal/native queue inspection, and identity validation.
 
 ## Read First
 
@@ -35,21 +35,23 @@ Load only the references needed for the task:
 ```bash
 export SLURM_DIR="<SLURM_DIR>"
 export HPC_PYTHON="<PYTHON3.12>"
-export HPC_ACCOUNT_TOOLS="<SKILL_DIR>/scripts"
+export HPC_TOOLS="<SKILL_DIR>/scripts"
 cd "$SLURM_DIR"
 
-"$HPC_PYTHON" "$HPC_ACCOUNT_TOOLS/hpc_accounts.py" list
-"$HPC_PYTHON" "$HPC_ACCOUNT_TOOLS/hpc_accounts.py" export-json <private.json> \
+"$HPC_PYTHON" "$HPC_TOOLS/hpc_doctor.py" --json
+"$HPC_PYTHON" "$HPC_TOOLS/hpc_accounts.py" list
+"$HPC_PYTHON" "$HPC_TOOLS/hpc_accounts.py" export-json <private.json> \
   --include-tokens --include-credentials
-"$HPC_PYTHON" "$HPC_ACCOUNT_TOOLS/hpc_accounts.py" import-json <private.json> \
+"$HPC_PYTHON" "$HPC_TOOLS/hpc_accounts.py" import-json <private.json> \
   --use-exported-default --sync-legacy-token
-"$HPC_PYTHON" hpc_queue_summary.py --details
+"$HPC_PYTHON" "$HPC_TOOLS/hpc_refresh_flow.py" NAME --visible-only
+"$HPC_PYTHON" "$HPC_TOOLS/hpc_queue_summary.py" --details
 "$HPC_PYTHON" hpc_submit_cycle.py validate --manifest <manifest.json>
 "$HPC_PYTHON" hpc_submit_cycle.py run --manifest <manifest.json>
 "$HPC_PYTHON" hpc_submit_cycle.py run --manifest <manifest.json> --submit
 ```
 
-Install the bundled account-tool dependencies from `scripts/requirements.txt`. The bundled identity path is read-only and deliberately excludes the broader upload CLI.
+Install the bundled controller dependencies from `scripts/requirements.txt`. The bundle deliberately excludes remote file-upload and submission CLIs.
 
 Use `--auth-account NAME` for multi-account work. Prefer `hpc_queue_summary.py` because it queries native Slurm state through the portal SSH proxy and can catch jobs omitted from portal rows.
 
