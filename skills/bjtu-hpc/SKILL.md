@@ -7,6 +7,14 @@ description: "BJTU HPC portal workflow for the local `slurm` workspace: configur
 
 Use the helper scripts in the local `slurm` workspace as the canonical interface to the BJTU HPC portal.
 
+On macOS, when the target campus/HPC network requires MotionPro, follow
+[VPN preflight and recovery](../motionpro-vpn-access/SKILL.md) before live
+access. Reuse a fresh connected observation during the same uninterrupted
+operation; local file review and manifest validation need no VPN. If the
+optional Guard widget fails, use the independent GPT manual recovery path,
+verify the target, and resume this workflow. VPN recovery does not replace
+portal authentication or authorize duplicate submissions.
+
 ## Read First
 
 Controller Python contract: all local BJTU helper commands must use `HPC_PYTHON=<PYTHON3.12>`, which has Paramiko installed. On macOS, do not invoke a helper with bare `python3`; the system interpreter is Python 3.9 and is unsupported. On Windows, use the Python 3.12 `python.exe` path and run the helpers directly in PowerShell; WSL is not required. The helpers use POSIX modes on macOS/Linux and restricted NTFS ACLs on Windows for private account, token, journal, intent, and receipt files. Any legacy `python3` command shown in a reference below means the configured `HPC_PYTHON` executable.

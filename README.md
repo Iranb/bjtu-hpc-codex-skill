@@ -4,6 +4,7 @@ Sanitized Codex skills for operating a BJTU-like HPC portal workflow from local 
 
 The skills cover:
 
+- MotionPro VPN preflight on macOS for campus-dependent access, with an independent GPT manual login path through MotionProOTP when the optional Guard widget fails.
 - Portal token refresh with Playwright.
 - Saved multi-account auth.
 - Passphrase-encrypted JSON account migration with in-memory authenticated decryption.
@@ -16,6 +17,9 @@ The skills cover:
 
 ## Skills
 
+- `skills/motionpro-vpn-access/SKILL.md`: campus VPN preflight, bounded recovery, target verification, and return to the original SSH/HPC task.
+- `skills/motionpro-vpn-access/references/manual-recovery.md`: GPT manual fallback using the official clients; no Guard Accessibility permission is required for this path, but the computer-use tool must be available.
+- `skills/motionpro-vpn-access/references/deployment.md`: macOS deployment parameters and the optional Guard shared-budget compatibility contract. The native Guard app and runtime state are not included.
 - `skills/bjtu-hpc/SKILL.md`: general BJTU HPC workflow and operational guardrails.
 - `skills/bjtu-hpc/scripts/`: sanitized portable mirror of the locally installed controller helpers, including account/auth, transfer, queue, planning, native submission, submit-cycle, data-supply, MCP, Widget snapshot, schemas, and their Python requirements.
 - `skills/bjtu-hpc/assets/windows-widget/`: canonical Windows widget source locked to the current cross-platform HPC widget generation.

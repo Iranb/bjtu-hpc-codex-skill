@@ -7,6 +7,12 @@ description: Use when an agent needs to refresh/save BJTU HPC auth, inspect nati
 
 Tool-first workflow for BJTU HPC portal work from the `slurm` helper workspace. Human step-by-step usage is in workspace `Manual.md`; detailed history and experiment notes live in `AGENTS.md` and `Readme.md`.
 
+On macOS, if live campus/HPC access depends on MotionPro, first apply
+[VPN preflight and recovery](../motionpro-vpn-access/SKILL.md). Local `validate`
+does not require VPN. After network loss, recover the tunnel and reconcile any
+existing submission receipt before resuming; do not submit the same job again
+because the connection failed.
+
 ## Runtime Defaults
 
 - Work from the helper workspace unless the project says otherwise: `<SLURM_DIR>`.

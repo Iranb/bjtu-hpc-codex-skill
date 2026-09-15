@@ -1,0 +1,7 @@
+interface:
+  display_name: "MotionPro 校园网接入"
+  short_description: "访问校园网、相关 SSH 和 HPC 前检查 VPN，小组件失效时由 GPT 手动恢复"
+  default_prompt: "使用 $motionpro-vpn-access 检查校园网连接；如自动恢复失效，用 MotionProOTP 手动恢复后继续访问目标资源。"
+
+policy:
+  allow_implicit_invocation: true

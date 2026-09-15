@@ -1,13 +1,14 @@
 # Local-First Synchronization Contract
 
 This repository is the sanitized public mirror of the locally installed
-`bjtu-hpc` and `bjtu-hpc-submit` skills plus the helper modules they invoke.
+`bjtu-hpc`, `bjtu-hpc-submit`, and `motionpro-vpn-access` skills plus the helper modules they invoke.
 The local installed skills and local helper workspace are authoritative for
 behavior and policy.
 
 ## Mirrored scope
 
-- Both skill definitions and agent metadata.
+- The three skill definitions and agent metadata.
+- MotionPro VPN read-only preflight, shared manual-attempt budget helpers, synthetic tests, and public recovery/deployment references. The optional native Guard app is not vendored.
 - Every reference owned by `bjtu-hpc`.
 - Helper entry points named by either skill and their complete local Python
   import closure.
@@ -31,6 +32,7 @@ on controller-private state:
 - Dataset/source selections that were private defaults require explicit CLI or
   environment configuration in the public bundle.
 - Test identities use obviously synthetic values.
+- MotionPro local session authorization is replaced by the current user's authorization boundary; local component-owner identifiers, source paths, and historical runtime observations become deployment parameters and explicit verification limits.
 - Public-only portability and safety fixes may remain on top of the local
   source, including identity-bound refresh commands and dependency completion.
 
@@ -42,7 +44,7 @@ Run all checks from the repository root with a Python 3.12 controller:
 export HPC_PYTHON="<PYTHON3.12>"
 export PYTHONPATH="$PWD/skills/bjtu-hpc/scripts"
 
-"$HPC_PYTHON" -m compileall -q skills/bjtu-hpc/scripts tests
+"$HPC_PYTHON" -m compileall -q skills/bjtu-hpc/scripts skills/motionpro-vpn-access/scripts tests
 bash -n skills/bjtu-hpc/scripts/hpc_shm_cache.sh
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
   "$HPC_PYTHON" -m pytest -p no:capture -q
